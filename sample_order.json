@@ -1,0 +1,18 @@
+{
+  "customer_return_rate_lt": 0.62,
+  "customer_return_rate_90d": 0.75,
+  "customer_account_age_days": 18,
+  "customer_order_velocity_7d": 5,
+  "order_value": 4899.0,
+  "discount_percentage": 50.0,
+  "category": "Apparel",
+  "category_return_base_rate": 0.26,
+  "is_prepaid": 0,
+  "is_cod": 1,
+  "days_to_return": 13.0,
+  "same_address_returns_7d": 3,
+  "same_email_returns_7d": 2,
+  "payment_hash_collision": 1,
+  "ip_phone_collision": 1,
+  "rto_risk_score": 0.44
+}

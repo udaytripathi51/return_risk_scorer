@@ -1,0 +1,414 @@
+{
+  "config": {
+    "n_customers": 60000,
+    "random_seed": 42,
+    "cost_fp_inr": 50.0,
+    "cost_fn_inr": 500.0,
+    "categories": [
+      "Apparel",
+      "Beauty",
+      "Books",
+      "Electronics",
+      "Home"
+    ]
+  },
+  "data": {
+    "n_return_requests": 33331,
+    "fraud_rate": 0.1272,
+    "n_fraud": 4241,
+    "cod_share": 0.4237,
+    "mean_order_value": 2049.42
+  },
+  "grounding": {
+    "olist": {
+      "status": "not_calibrated",
+      "reason": "olist_order_items_dataset.csv / olist_products_dataset.csv not present",
+      "how_to_enable": "python scripts/download_olist.py  (needs a Kaggle API token)"
+    },
+    "ieee_cis": {
+      "status": "not_validated",
+      "reason": "ieee_fraud.csv not present (and no creditcard.csv fallback)",
+      "how_to_enable": "python scripts/download_ieee.py  -- needs a free Kaggle account, an API token at ~/.kaggle/kaggle.json, and acceptance of the competition rules at kaggle.com/c/ieee-fraud-detection/rules",
+      "note": "This state is reported verbatim in the model card. It is explicitly NOT a success result: the previous version of this function returned an all-True dict here, which made an unrun check look validated."
+    }
+  },
+  "operating_point": {
+    "threshold": 0.09935871743486974,
+    "selected_on": "validation fold (never test)"
+  },
+  "ranking_metrics": {
+    "pr_auc": 0.4369,
+    "roc_auc": 0.8019,
+    "base_rate": 0.1267,
+    "pr_auc_lift_over_baseline": 3.45,
+    "brier_score": 0.08805
+  },
+  "classification_report": {
+    "threshold": 0.0994,
+    "n": 6686,
+    "base_rate": 0.1267,
+    "confusion": {
+      "tn": 4192,
+      "fp": 1647,
+      "fn": 208,
+      "tp": 639
+    },
+    "precision": 0.2795,
+    "recall": 0.7544,
+    "f1": 0.4079,
+    "flag_rate": 0.3419,
+    "false_positive_rate": 0.2821,
+    "cost_per_order": 27.8717,
+    "approve_all_cost_per_order": 63.3413,
+    "review_all_cost_per_order": 43.6659,
+    "cost_reduction_vs_approve_all": 0.56
+  },
+  "calibration": {
+    "brier_raw": 0.16336,
+    "brier_calibrated": 0.08805,
+    "brier_base_rate_constant": 0.11063,
+    "brier_improvement_pct": 46.1,
+    "ece_raw": 0.26473,
+    "ece_calibrated": 0.01417,
+    "reliability_raw": [
+      {
+        "bin": "[0.1, 0.2)",
+        "n": 602,
+        "mean_predicted": 0.1816,
+        "actual_fraud_rate": 0.0316,
+        "gap": 0.15
+      },
+      {
+        "bin": "[0.2, 0.3)",
+        "n": 2404,
+        "mean_predicted": 0.2478,
+        "actual_fraud_rate": 0.0391,
+        "gap": 0.2087
+      },
+      {
+        "bin": "[0.3, 0.4)",
+        "n": 1360,
+        "mean_predicted": 0.3437,
+        "actual_fraud_rate": 0.0684,
+        "gap": 0.2753
+      },
+      {
+        "bin": "[0.4, 0.5)",
+        "n": 708,
+        "mean_predicted": 0.4455,
+        "actual_fraud_rate": 0.1059,
+        "gap": 0.3396
+      },
+      {
+        "bin": "[0.5, 0.6)",
+        "n": 455,
+        "mean_predicted": 0.5467,
+        "actual_fraud_rate": 0.1956,
+        "gap": 0.3511
+      },
+      {
+        "bin": "[0.6, 0.7)",
+        "n": 390,
+        "mean_predicted": 0.6524,
+        "actual_fraud_rate": 0.2282,
+        "gap": 0.4242
+      },
+      {
+        "bin": "[0.7, 0.8)",
+        "n": 344,
+        "mean_predicted": 0.75,
+        "actual_fraud_rate": 0.3924,
+        "gap": 0.3576
+      },
+      {
+        "bin": "[0.8, 0.9)",
+        "n": 307,
+        "mean_predicted": 0.8496,
+        "actual_fraud_rate": 0.57,
+        "gap": 0.2796
+      },
+      {
+        "bin": "[0.9, 1.0)",
+        "n": 116,
+        "mean_predicted": 0.9235,
+        "actual_fraud_rate": 0.6724,
+        "gap": 0.251
+      }
+    ],
+    "reliability_calibrated": [
+      {
+        "bin": "[0.0, 0.1)",
+        "n": 4414,
+        "mean_predicted": 0.0562,
+        "actual_fraud_rate": 0.0473,
+        "gap": 0.0089
+      },
+      {
+        "bin": "[0.1, 0.2)",
+        "n": 1096,
+        "mean_predicted": 0.1383,
+        "actual_fraud_rate": 0.1423,
+        "gap": -0.004
+      },
+      {
+        "bin": "[0.2, 0.3)",
+        "n": 441,
+        "mean_predicted": 0.2482,
+        "actual_fraud_rate": 0.2358,
+        "gap": 0.0123
+      },
+      {
+        "bin": "[0.3, 0.4)",
+        "n": 268,
+        "mean_predicted": 0.347,
+        "actual_fraud_rate": 0.403,
+        "gap": -0.056
+      },
+      {
+        "bin": "[0.4, 0.5)",
+        "n": 183,
+        "mean_predicted": 0.4453,
+        "actual_fraud_rate": 0.5191,
+        "gap": -0.0739
+      },
+      {
+        "bin": "[0.5, 0.6)",
+        "n": 129,
+        "mean_predicted": 0.5489,
+        "actual_fraud_rate": 0.5426,
+        "gap": 0.0062
+      },
+      {
+        "bin": "[0.6, 0.7)",
+        "n": 104,
+        "mean_predicted": 0.645,
+        "actual_fraud_rate": 0.7212,
+        "gap": -0.0761
+      },
+      {
+        "bin": "[0.7, 0.8)",
+        "n": 47,
+        "mean_predicted": 0.7476,
+        "actual_fraud_rate": 0.617,
+        "gap": 0.1305
+      },
+      {
+        "bin": "[0.8, 0.9)",
+        "n": 4,
+        "mean_predicted": 0.8137,
+        "actual_fraud_rate": 0.25,
+        "gap": 0.5637
+      }
+    ],
+    "plot": "outputs/calibration.png",
+    "note": "Platt calibration is fitted on the validation fold only and is strictly monotone, so PR-AUC, ROC-AUC and all SHAP attributions are identical before and after -- only the probability scale changes. Isotonic was measured first and rejected: its ties cost ~3% of PR-AUC."
+  },
+  "cost_curve": {
+    "cost_optimal_threshold": 0.1139,
+    "cost_at_optimum": 27.6324,
+    "chosen_threshold": 0.0994,
+    "cost_at_chosen": 27.9127,
+    "approve_all_cost": 63.3413,
+    "review_all_cost": 43.6659,
+    "flat_basin_within_5pct": [
+      0.0793,
+      0.1436
+    ],
+    "plot": "outputs/cost_curve.png"
+  },
+  "cost_sensitivity": {
+    "grid": [
+      {
+        "fn_fp_ratio": 2,
+        "cost_fp": 50.0,
+        "cost_fn": 100.0,
+        "optimal_threshold": 0.3218,
+        "precision_at_optimal": 0.5364,
+        "recall_at_optimal": 0.4262,
+        "flag_rate_at_optimal": 0.1007,
+        "cost_at_optimal": 9.6022,
+        "cost_at_project_threshold": 15.4278,
+        "regret_pct": 60.67,
+        "approve_all_cost": 12.6683,
+        "saving_vs_approve_all_pct": 24.2
+      },
+      {
+        "fn_fp_ratio": 5,
+        "cost_fp": 50.0,
+        "cost_fn": 250.0,
+        "optimal_threshold": 0.1585,
+        "precision_at_optimal": 0.3706,
+        "recall_at_optimal": 0.6423,
+        "flag_rate_at_optimal": 0.2196,
+        "cost_at_optimal": 18.2396,
+        "cost_at_project_threshold": 20.0942,
+        "regret_pct": 10.17,
+        "approve_all_cost": 31.6707,
+        "saving_vs_approve_all_pct": 42.41
+      },
+      {
+        "fn_fp_ratio": 10,
+        "cost_fp": 50.0,
+        "cost_fn": 500.0,
+        "optimal_threshold": 0.1139,
+        "precision_at_optimal": 0.309,
+        "recall_at_optimal": 0.7261,
+        "flag_rate_at_optimal": 0.2976,
+        "cost_at_optimal": 27.6324,
+        "cost_at_project_threshold": 27.8717,
+        "regret_pct": 0.87,
+        "approve_all_cost": 63.3413,
+        "saving_vs_approve_all_pct": 56.38
+      },
+      {
+        "fn_fp_ratio": 20,
+        "cost_fp": 50.0,
+        "cost_fn": 1000.0,
+        "optimal_threshold": 0.0595,
+        "precision_at_optimal": 0.1895,
+        "recall_at_optimal": 0.8819,
+        "flag_rate_at_optimal": 0.5894,
+        "cost_at_optimal": 38.8424,
+        "cost_at_project_threshold": 43.4266,
+        "regret_pct": 11.8,
+        "approve_all_cost": 126.6826,
+        "saving_vs_approve_all_pct": 69.34
+      },
+      {
+        "fn_fp_ratio": 50,
+        "cost_fp": 50.0,
+        "cost_fn": 2500.0,
+        "optimal_threshold": 0.0248,
+        "precision_at_optimal": 0.1269,
+        "recall_at_optimal": 1.0,
+        "flag_rate_at_optimal": 0.9982,
+        "cost_at_optimal": 43.5761,
+        "cost_at_project_threshold": 90.0912,
+        "regret_pct": 106.74,
+        "approve_all_cost": 316.7066,
+        "saving_vs_approve_all_pct": 86.24
+      }
+    ],
+    "csv": "outputs/cost_sensitivity.csv",
+    "plot": "outputs/cost_sensitivity.png",
+    "max_regret_pct": 106.74,
+    "interpretation": "The threshold chosen under the project's 10x assumption is re-scored against every other ratio in the grid. `regret_pct` is how much worse our fixed threshold performs than the threshold that ratio would have chosen -- the practical cost of the cost assumption being wrong."
+  },
+  "adversarial": {
+    "in_distribution_recall": 0.7544,
+    "adversarial_recall": 0.3306,
+    "absolute_recall_gap": 0.4238,
+    "relative_recall_drop": 0.5618,
+    "in_distribution_precision": 0.2795,
+    "adversarial_precision": 0.1711,
+    "adversarial_pr_auc": 0.1646,
+    "adversarial_base_rate": 0.121,
+    "interpretation": "Recall measured at the identical threshold on an adapted-abuser slice that suppresses ring collisions, burner accounts and COD skew. The gap is the honest cost of relying on those signals; it is reported, not minimised."
+  },
+  "leakage_test": {
+    "n_customers": 60000,
+    "n_return_requests": 33331,
+    "test_base_rate": 0.1267,
+    "concentration": {
+      "max_single_feature_importance": 0.1925,
+      "cap": 0.25,
+      "top_feature": "customer_return_rate_lt",
+      "ranked_importances": [
+        [
+          "customer_return_rate_lt",
+          0.1925
+        ],
+        [
+          "same_address_returns_7d",
+          0.1581
+        ],
+        [
+          "customer_account_age_days",
+          0.1133
+        ],
+        [
+          "customer_order_velocity_7d",
+          0.0887
+        ],
+        [
+          "same_email_returns_7d",
+          0.085
+        ],
+        [
+          "customer_return_rate_90d",
+          0.059
+        ],
+        [
+          "discount_percentage",
+          0.0547
+        ],
+        [
+          "is_cod",
+          0.0409
+        ],
+        [
+          "days_to_return",
+          0.0398
+        ],
+        [
+          "rto_risk_score",
+          0.0351
+        ],
+        [
+          "ip_phone_collision",
+          0.0329
+        ],
+        [
+          "order_value",
+          0.026
+        ],
+        [
+          "payment_hash_collision",
+          0.025
+        ],
+        [
+          "category_encoded",
+          0.0246
+        ],
+        [
+          "category_return_base_rate",
+          0.0243
+        ]
+      ],
+      "passed": true
+    },
+    "top3_ablation": {
+      "dropped_features": [
+        "customer_return_rate_lt",
+        "same_address_returns_7d",
+        "customer_account_age_days"
+      ],
+      "full_pr_auc": 0.4369,
+      "reduced_pr_auc": 0.3734,
+      "relative_drop": 0.1455,
+      "max_allowed_relative_drop": 0.5,
+      "passed": true
+    },
+    "label_shuffle_control": {
+      "shuffled_pr_auc": 0.1187,
+      "base_rate": 0.1267,
+      "lift_over_base_rate": 0.9374,
+      "max_allowed_lift": 1.25,
+      "passed": true
+    },
+    "all_passed": true
+  },
+  "business_impact": {
+    "per_n_returns": 10000,
+    "flagged_for_review": 3419,
+    "fraud_caught": 956,
+    "fraud_missed": 311,
+    "genuine_customers_wrongly_flagged": 2463,
+    "review_workload_pct": 34.2,
+    "approve_all_loss_inr": 633413,
+    "model_loss_inr": 278717,
+    "net_saving_inr": 354696,
+    "saving_pct": 0.56,
+    "disclaimer": "ILLUSTRATIVE, order-of-magnitude only. Derived from measured confusion rates on synthetic held-out data, scaled to 10,000 returns, using assumed FP=INR 50 / FN=INR 500. A real merchant must substitute their own cost-of-goods, reverse-logistics and review-cost figures before treating any of this as a savings estimate."
+  }
+}

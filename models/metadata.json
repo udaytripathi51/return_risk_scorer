@@ -1,0 +1,45 @@
+{
+  "threshold": 0.09935871743486974,
+  "features": [
+    "customer_return_rate_lt",
+    "customer_return_rate_90d",
+    "customer_account_age_days",
+    "customer_order_velocity_7d",
+    "order_value",
+    "discount_percentage",
+    "category_encoded",
+    "category_return_base_rate",
+    "is_cod",
+    "days_to_return",
+    "same_address_returns_7d",
+    "same_email_returns_7d",
+    "payment_hash_collision",
+    "ip_phone_collision",
+    "rto_risk_score"
+  ],
+  "categories": [
+    "Apparel",
+    "Beauty",
+    "Books",
+    "Electronics",
+    "Home"
+  ],
+  "n_train": 20002,
+  "n_val": 6643,
+  "n_test": 6686,
+  "train_fraud_rate": 0.1266,
+  "best_iteration": 91,
+  "cost_fp": 50.0,
+  "cost_fn": 500.0,
+  "validation_operating_point": {
+    "cost_per_order": 30.9273,
+    "flag_rate": 0.3476,
+    "precision": 0.2685,
+    "recall": 0.7193
+  },
+  "library_versions": {
+    "xgboost": "3.4.1",
+    "numpy": "2.1.3",
+    "pandas": "2.2.3"
+  }
+}
