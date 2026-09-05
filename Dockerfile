@@ -60,4 +60,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 # A single Space port cannot serve both, and the API is the deliverable a reviewer will
 # want to hit directly. To ship the dashboard on the Space instead, replace the CMD with:
 #   CMD ["streamlit","run","dashboard/app.py","--server.port=7860","--server.address=0.0.0.0"]
-CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["sh", "-c", "uvicorn api.app:app --host 0.0.0.0 --port ${PORT:-7860}"]
