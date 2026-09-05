@@ -1,27 +1,37 @@
----
-title: Return Risk Scorer
-emoji: 🛡️
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-app_port: 7860
-pinned: false
-license: mit
----
-
 # 🛡️ Return Risk Scorer
 
-**Defense-only return-fraud risk scoring for Indian e-commerce.**
+**Defense-only return-fraud risk scoring for Indian e-commerce.**  
 Given an order and a return request, it returns a calibrated risk score (0–1), a bounded
 action (`auto_approve` / `manual_review`), and the top-3 human-readable reasons — and it
 ships with an automated test suite that proves the model is not cheating via label leakage.
 
 > Razorpay AI Buildathon 2026 · **Track 02: AI Risk Manager**
 
-[![CI](https://github.com/<YOUR-GITHUB-USERNAME>/return-risk-scorer/actions/workflows/ci.yml/badge.svg)](https://github.com/<YOUR-GITHUB-USERNAME>/return-risk-scorer/actions/workflows/ci.yml)
+[![CI](https://github.com/udaytripathi51/return_risk_scorer/actions/workflows/ci.yml/badge.svg)](https://github.com/udaytripathi51/return_risk_scorer/actions/workflows/ci.yml)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
-[![Live demo](https://img.shields.io/badge/🤗%20Spaces-live%20demo-yellow)](https://huggingface.co/spaces/<YOUR-HF-USERNAME>/return-risk-scorer)
+[![Live Dashboard](https://img.shields.io/badge/🚀%20Live-Dashboard-2ea44f)](https://return-risk-dashboard.onrender.com)
+[![Live API](https://img.shields.io/badge/API-Live-2ea44f)](https://return-risk-scorer-kw0n.onrender.com)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](#license)
+
+---
+
+## 🚀 Live Demo
+
+### Streamlit Dashboard
+
+**Live application:** https://return-risk-dashboard.onrender.com
+
+### FastAPI API
+
+**Live API:** https://return-risk-scorer-kw0n.onrender.com
+
+### API Documentation
+
+**Swagger UI:** https://return-risk-scorer-kw0n.onrender.com/docs
+
+### Health Check
+
+**API health:** https://return-risk-scorer-kw0n.onrender.com/health
 
 ---
 
@@ -53,11 +63,11 @@ traits** that only *tilt the distributions* observable features are drawn from �
 nothing is rewritten after the label is drawn. PR-AUC **0.4369 against a 12.7% base rate
 is a real 3.45× lift**, and it survives having its top features taken away:
 
-| Leakage check | Result | Limit | |
-|---|---|---|---|
-| Max single-feature importance | **19.3%** (`customer_return_rate_lt`) | ≤ 25% | ✅ |
-| PR-AUC after dropping top-3 features | 0.4369 → **0.3734** (−14.5%) | ≤ −50% | ✅ |
-| PR-AUC on shuffled labels | 0.1187 vs 0.1267 base rate (0.94×) | ≤ 1.25× | ✅ |
+| Leakage check | Result | Limit |
+|---|---|---|
+| Max single-feature importance | **19.3%** (`customer_return_rate_lt`) | ≤ 25% |
+| PR-AUC after dropping top-3 features | 0.4369 → **0.3734** (−14.5%) | ≤ 50% |
+| PR-AUC on shuffled labels | 0.1187 vs 0.1267 base rate (0.94×) | ≤ 1.25× |
 
 The pre-fix model fell **66%** under that same ablation. This one falls 14.5%. These run
 in CI on every push (`tests/test_leakage.py`), so the fix cannot silently regress.
@@ -67,8 +77,8 @@ in CI on every push (`tests/test_leakage.py`), so the fix cannot silently regres
 ## Quickstart
 
 ```bash
-git clone https://github.com/<YOUR-GITHUB-USERNAME>/return-risk-scorer.git
-cd return-risk-scorer
+git clone https://github.com/udaytripathi51/return_risk_scorer.git
+cd return_risk_scorer
 pip install -r requirements-lock.txt
 python run.py
 ```
@@ -87,6 +97,8 @@ uvicorn api.app:app --port 7860
 ```bash
 curl -X POST http://localhost:7860/score -H "Content-Type: application/json" -d @sample_order.json
 ```
+
+### Representative response
 
 ```json
 {
@@ -110,7 +122,7 @@ curl -X POST http://localhost:7860/score -H "Content-Type: application/json" -d 
     }
   ],
   "threshold_used": 0.0994,
-  "model_version": "rrs-b3ff1277c1aa"
+  "model_version": "rrs-..."
 }
 ```
 
@@ -124,6 +136,12 @@ scale as `risk_score`.</sub>
 streamlit run dashboard/app.py
 ```
 
+The dashboard provides three tabs:
+
+1. **Score one order** — manual entry, risk score, top-3 reasons, SHAP waterfall, and cost-curve position.
+2. **Score a CSV batch** — upload, triage table, and downloadable results.
+3. **Model evidence** — leakage checks, calibration, adversarial performance, and cost sensitivity.
+
 **Run the tests, including the leakage suite:**
 
 ```bash
@@ -135,19 +153,28 @@ pytest tests/ -v
 ## How it works
 
 ```mermaid
-flowchart LR
-    A["Order + return<br/>request"] --> B["FastAPI<br/>/score"]
-    B --> C{"Parseable?<br/>Known category?<br/>Model loaded?"}
-    C -->|"no"| F["manual_review<br/>risk_score = 1.0"]
-    C -->|"yes"| D["XGBoost<br/>15 features"]
-    D --> E["Platt calibration<br/>→ risk score 0-1"]
-    D --> G["SHAP TreeExplainer<br/>→ top-3 reasons"]
-    E --> H{"score ≥ threshold?"}
-    H -->|"yes"| I["manual_review"]
-    H -->|"no"| J["auto_approve"]
-    G --> I
-    G --> J
+flowchart TB
+    A["Order + return<br/>request"] --> S["RiskScoringService"]
+
+    S --> M1["XGBoost<br/>15 features"]
+    M1 --> M2["Platt calibration<br/>→ risk score 0-1"]
+    M1 --> M3["SHAP TreeExplainer<br/>→ top-3 reasons"]
+
+    M2 --> H{"score ≥ threshold?"}
+    H -->|"yes"| R["manual_review"]
+    H -->|"no"| AP["auto_approve"]
+    M3 --> R
+    M3 --> AP
+
+    S --> API["FastAPI API<br/>/score /health /docs"]
+    S --> UI["Streamlit<br/>reviewer dashboard"]
 ```
+
+**In words:** hidden customer traits → tilted feature distributions → a label drawn from
+the traits → XGBoost trained on a split that keeps each customer wholly on one side →
+calibrated to real probabilities → thresholded at minimum expected cost → explained with
+SHAP → exposed through the FastAPI API and the Streamlit reviewer dashboard using the same
+`RiskScoringService` implementation.
 
 **Fail-closed by construction.** There is exactly one route to `auto_approve`: a fully-
 parsed order whose model score came back below the threshold. Unknown category, missing
@@ -177,17 +204,21 @@ which is exactly what the pre-fix model leaned on because the label was built fr
    top-3 ablation, and a shuffled-label control — run in CI on every push. The
    shuffled-label control is the one people skip: it proves the *pipeline* (split,
    encoding, calibration) isn't leaking, independently of the data.
+
 2. **Honest metrics, including the unflattering one.** The adversarial recall gap
    (−56.2%) is published in the model card. An adapted abuser who suppresses ring
    collisions and keeps return history normal *does* evade this model, and a merchant
    deciding how much to trust auto-approve needs that number.
+
 3. **Cost assumptions that are stress-tested, not asserted.** FP ≈ ₹50 / FN ≈ ₹500 comes
    with a reasoning chain *and* a sensitivity grid across FN:FP ratios from 2× to 50×.
    The operating point is robust to being wrong by ~2×; beyond that it isn't, and the
    regret is quantified.
+
 4. **Calibration chosen by measurement.** Isotonic was tried first and rejected: its step
    function tied 4,443 rows together and cost 3% of PR-AUC. Platt is strictly monotone,
    preserves ranking exactly, and calibrated better.
+
 5. **Defense-only, verifiably.** No feature-importance endpoint, no counterfactual API, no
    global threshold on `/health`, batch capped at 100, rate-limited. See
    [SAFETY.md](SAFETY.md).
@@ -204,7 +235,39 @@ which is exactly what the pre-fix model leaned on because the label was built fr
 | `POST /score/batch` | Score up to 100 (capped deliberately — see SAFETY.md) |
 | `GET /docs` | OpenAPI / Swagger UI |
 
-Request fields are documented in [`api/schemas.py`](api/schemas.py) and at `/docs`.
+### Live API
+
+**Base URL:** https://return-risk-scorer-kw0n.onrender.com
+
+**Swagger UI:** https://return-risk-scorer-kw0n.onrender.com/docs
+
+**Health check:** https://return-risk-scorer-kw0n.onrender.com/health
+
+Request fields are documented in [`api/schemas.py`](api/schemas.py).
+
+---
+
+## Deployment
+
+The project is deployed publicly on Render as two separate Web Services.
+
+### FastAPI API
+
+- **Runtime:** Docker
+- **Public API:** https://return-risk-scorer-kw0n.onrender.com
+- **Health check:** `/health`
+- **Swagger UI:** https://return-risk-scorer-kw0n.onrender.com/docs
+
+### Streamlit Dashboard
+
+- **Runtime:** Python 3.13
+- **Build command:** `pip install -r requirements-lock.txt`
+- **Start command:** `streamlit run dashboard/app.py --server.address 0.0.0.0 --server.port $PORT`
+- **Public dashboard:** https://return-risk-dashboard.onrender.com
+
+Both services use the project's persisted model artifacts and the same `RiskScoringService`
+implementation. The Streamlit dashboard runs the scoring service directly rather than
+making HTTP requests to the FastAPI deployment.
 
 ---
 
@@ -212,11 +275,14 @@ Request fields are documented in [`api/schemas.py`](api/schemas.py) and at `/doc
 
 | Document | What's in it |
 |---|---|
-| [PROJECT_GUIDE.md](PROJECT_GUIDE.md) | Setup, deployment, and submission walkthrough |
+| [PROJECT_GUIDE.md](PROJECT_GUIDE.md) | Setup, deployment, submission walkthrough, video plan, and panel questions |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 12 decisions as decision → why → what was rejected |
 | [SAFETY.md](SAFETY.md) | Defense-only rationale; what is and isn't exposed |
-| [models/MODEL_CARD.md](models/MODEL_CARD.md) | Auto-generated metrics, limitations |
+| [models/MODEL_CARD.md](models/MODEL_CARD.md) | Auto-generated metrics and limitations |
 | `outputs/` | Cost curve, sensitivity grid, reliability diagram, `metrics.json` |
+| Live Dashboard | [Streamlit application](https://return-risk-dashboard.onrender.com) |
+| Live API | [FastAPI service](https://return-risk-scorer-kw0n.onrender.com) |
+| API Docs | [Swagger UI](https://return-risk-scorer-kw0n.onrender.com/docs) |
 
 ---
 
@@ -235,6 +301,8 @@ Request fields are documented in [`api/schemas.py`](api/schemas.py) and at `/doc
 - **Adapted abusers evade this model materially** (−56.2% recall). Published, not hidden.
 - **No demographic fairness audit.** The generator has no demographic attributes, so one
   would be vacuous here; a real deployment must run one.
+
+---
 
 ## License
 
