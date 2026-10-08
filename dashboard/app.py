@@ -1,19 +1,22 @@
-"""Reviewer-facing Streamlit dashboard (PROJECT_SPEC.md section 7.6).
+"""Reviewer-facing Streamlit dashboard.
 
     streamlit run dashboard/app.py
 
 Three tabs:
   1. Score one order   -- manual entry, risk score, SHAP waterfall, cost-curve position
-  2. Score a CSV batch -- upload, triage table, downloadable results
+  2. Score a CSV batch -- upload (or a built-in synthetic sample), triage table,
+                          downloadable results
   3. Model evidence    -- the honest metrics: leakage checks, calibration, adversarial gap
 
-This is what the pitch video should show: a live decision with its reasons, not a curl
-command.
+The point of the dashboard: a live decision with its reasons, not a curl command.
 
-DEFENSE-ONLY NOTE: this dashboard runs against the same service as the API and exposes no
-extra capability. It shows the operating threshold because a merchant operator needs it
-to read their own triage queue -- the same per-order carve-out the API relies on. It has
-no batch-probe, no threshold sweep against live scoring, and no counterfactual tool.
+DEFENSE-ONLY NOTE: this dashboard runs against the same service as the API. It shows the
+operating threshold because a merchant operator needs it to read their own triage queue --
+the same per-order carve-out the API relies on. CSV batches are capped at the API's
+MAX_BATCH_SIZE, and there is no threshold sweep against live scoring. The manual-entry
+form in tab 1 is a demo surface on synthetic data: anyone can vary inputs and watch the
+decision change, which a production reviewer UI would not allow (it would show real
+orders read-only, behind authentication, through the rate-limited API).
 """
 from __future__ import annotations
 
@@ -31,6 +34,7 @@ import streamlit as st  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from api.schemas import MAX_BATCH_SIZE, OrderRequest  # noqa: E402
 from api.service import RiskScoringService  # noqa: E402
 from config import CATEGORIES, CATEGORY_RETURN_BASE_RATE, COST_FN, COST_FP  # noqa: E402
 
@@ -50,6 +54,21 @@ def get_metrics() -> dict | None:
         with open(METRICS_PATH, encoding="utf-8") as f:
             return json.load(f)
     return None
+
+
+SAMPLE_BATCH_SIZE = 25
+
+
+@st.cache_data
+def get_sample_batch(n: int = SAMPLE_BATCH_SIZE) -> pd.DataFrame:
+    """A small batch for visitors who have no CSV to upload: synthetic return requests
+    from the project's own generator (with its own seed), trimmed to the API contract
+    fields, so no label or customer id is shown. Well under the MAX_BATCH_SIZE cap."""
+    from data.synthetic import generate_dataset
+
+    pool = generate_dataset(n_customers=400, rng=np.random.default_rng(2024))
+    sample = pool.sample(n=n, random_state=7)
+    return sample[list(OrderRequest.model_fields)].reset_index(drop=True)
 
 
 service = get_service()
@@ -165,7 +184,13 @@ with tab1:
 
         m1, m2, m3 = st.columns(3)
         m1.metric("Risk score", f"{score:.3f}")
-        m2.metric("Action", "MANUAL REVIEW" if action == "manual_review" else "AUTO-APPROVE")
+        # Short labels fit a third-width column on any laptop screen; the banner below
+        # spells the decision out in full.
+        m2.metric(
+            "Action",
+            "Review" if action == "manual_review" else "Approve",
+            help="The API returns this as `manual_review` or `auto_approve`.",
+        )
         m3.metric("Threshold", f"{result['threshold_used']:.3f}")
 
         if action == "manual_review":
@@ -206,15 +231,27 @@ with tab1:
             for k, (lab, cv) in enumerate(zip(labels, contribs)):
                 ax.barh(k, cv, left=cum, height=0.62,
                         color="#c0392b" if cv > 0 else "#1f4e79")
-                ax.text(cum + cv + (0.02 if cv > 0 else -0.02), k, f"{cv:+.2f}",
-                        va="center", ha="left" if cv > 0 else "right", fontsize=8)
+                # Offset in points, not data units, so the gap looks the same whether
+                # the bars span 0.4 or 3.0 log-odds.
+                ax.annotate(f"{cv:+.2f}", xy=(cum + cv, k),
+                            xytext=(3 if cv > 0 else -3, 0), textcoords="offset points",
+                            va="center", ha="left" if cv > 0 else "right", fontsize=8)
                 cum += cv
             ax.axvline(base, color="#7f8c8d", ls="--", lw=1)
-            ax.text(base, len(labels) - 0.3, f" base {base:.2f}", fontsize=8,
-                    color="#7f8c8d")
             ax.set_yticks(range(len(labels)))
             ax.set_yticklabels(labels, fontsize=8)
-            ax.invert_yaxis()
+            # Inverted y-axis (largest driver on top), with a row of headroom for the
+            # base-value label, which sits above the first bar where it cannot overlap one.
+            ax.set_ylim(len(labels) - 0.5, -1.2)
+            # Horizontal room for the value printed just past the end of each bar. Bars make
+            # their start points "sticky", which would cancel the margin, so switch that off.
+            ax.use_sticky_edges = False
+            ax.margins(x=0.12)
+            x_lo, x_hi = ax.get_xlim()
+            near_right = base > (x_lo + x_hi) / 2
+            ax.text(base, -0.8, f"base {base:.2f} " if near_right else f" base {base:.2f}",
+                    ha="right" if near_right else "left", va="center",
+                    fontsize=8, color="#7f8c8d")
             ax.set_xlabel("Contribution to raw log-odds margin")
             ax.grid(axis="x", alpha=0.3)
             fig.tight_layout()
@@ -272,8 +309,28 @@ with tab2:
     )
 
     up = st.file_uploader("CSV file", type=["csv"])
+    if st.button(f"No CSV handy? Score {SAMPLE_BATCH_SIZE} sample return requests"):
+        st.session_state["show_sample_batch"] = True
     if up is not None:
         df = pd.read_csv(up)
+    elif st.session_state.get("show_sample_batch"):
+        df = get_sample_batch()
+        st.caption(
+            f"{SAMPLE_BATCH_SIZE} synthetic return requests from the project's own data "
+            "generator. Upload a CSV above to score your own."
+        )
+    else:
+        df = None
+    if df is not None and len(df) > MAX_BATCH_SIZE:
+        # Same cap as POST /score/batch: unbounded batch scoring is the cheapest way to
+        # map a decision boundary, so the demo UI must not offer it either. (No st.stop():
+        # that would also blank the "Model evidence" tab for this run.)
+        st.error(
+            f"This file has {len(df):,} rows. Upload at most {MAX_BATCH_SIZE} return "
+            "requests at a time, the same limit the API enforces."
+        )
+        df = None
+    if df is not None:
         if "category_return_base_rate" not in df.columns and "category" in df.columns:
             df["category_return_base_rate"] = df["category"].map(
                 CATEGORY_RETURN_BASE_RATE
@@ -302,6 +359,12 @@ with tab2:
                 + [c for c in ("category", "order_value", "is_cod") if c in out.columns]],
             use_container_width=True,
             height=380,
+            hide_index=True,
+            column_config={
+                "risk_score": st.column_config.NumberColumn(format="%.3f"),
+                "order_value": st.column_config.NumberColumn("order_value (INR)",
+                                                             format="%.0f"),
+            },
         )
         st.download_button(
             "Download scored results",
@@ -340,8 +403,8 @@ with tab3:
         k[4].metric("Brier", f"{cal['brier_calibrated']:.4f}")
         st.caption(
             f"Base rate {r['base_rate']:.1%}. PR-AUC of {r['pr_auc']:.2f} is a genuine "
-            f"{r['pr_auc_lift_over_baseline']:.1f}x lift — deliberately not the ~0.95 the "
-            "pre-fix pipeline reported, which came from a label leak rather than skill."
+            f"{r['pr_auc_lift_over_baseline']:.1f}x lift. A PR-AUC near 0.95 on data like this "
+            "would signal a label leak, not skill; the leakage checks below rule that out."
         )
 
         st.divider()
@@ -377,7 +440,9 @@ with tab3:
             st.subheader("Adversarial slice")
             st.metric("Recall, in-distribution", f"{adv['in_distribution_recall']:.3f}")
             st.metric("Recall, adapted abuser", f"{adv['adversarial_recall']:.3f}",
-                      delta=f"-{adv['relative_recall_drop']:.1%}", delta_color="inverse")
+                      # "normal" shows a negative delta in red: a recall drop is bad
+                      # news.
+                      delta=f"-{adv['relative_recall_drop']:.1%}", delta_color="normal")
             st.caption(adv["interpretation"])
 
         st.divider()

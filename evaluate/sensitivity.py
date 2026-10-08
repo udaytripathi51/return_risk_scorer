@@ -1,4 +1,4 @@
-"""Cost-assumption sensitivity analysis (PROJECT_SPEC.md sections 7.4 and 2).
+"""Cost-assumption sensitivity analysis.
 
 The FP=INR 50 / FN=INR 500 figures are illustrative. The honest question is therefore not
 "what is the optimal threshold" but "how much does the answer move if those numbers are
@@ -19,6 +19,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
+from matplotlib.ticker import FixedLocator, FuncFormatter, NullLocator  # noqa: E402
 
 from config import COST_FN, COST_FP  # noqa: E402
 from evaluate.metrics import confusion_at, cost_of  # noqa: E402
@@ -26,6 +27,15 @@ from evaluate.metrics import confusion_at, cost_of  # noqa: E402
 # FN:FP ratios spanning "review is nearly as expensive as the loss" (2x) to "the loss
 # dwarfs review" (50x). The project's own assumption sits at 10x.
 RATIOS = [2, 5, 10, 20, 50]
+
+
+def _label_ratio_axis(ax) -> None:
+    """Log-scale x-axis with a labelled tick at every ratio in the grid (matplotlib's
+    default log ticks label only powers of ten)."""
+    ax.set_xscale("log")
+    ax.xaxis.set_major_locator(FixedLocator(RATIOS))
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _pos: f"{v:g}x"))
+    ax.xaxis.set_minor_locator(NullLocator())
 
 
 def _best_threshold(y: np.ndarray, p: np.ndarray, cost_fp: float,
@@ -101,7 +111,7 @@ def run_sensitivity(
                 label=f"Project threshold {chosen_threshold:.3f}")
     ax1.axvline(COST_FN / COST_FP, ls=":", color="#c0392b",
                 label=f"Project assumption ({COST_FN / COST_FP:.0f}x)")
-    ax1.set_xscale("log")
+    _label_ratio_axis(ax1)
     ax1.set_xlabel("FN : FP cost ratio (log scale)")
     ax1.set_ylabel("Cost-optimal threshold")
     ax1.set_title("Optimal threshold vs cost assumption")
@@ -114,7 +124,7 @@ def run_sensitivity(
              label="Review workload", color="#7f8c8d")
     ax2.plot(df["fn_fp_ratio"], df["regret_pct"] / 100, "^:", lw=2,
              label="Regret of keeping our threshold", color="#c0392b")
-    ax2.set_xscale("log")
+    _label_ratio_axis(ax2)
     ax2.set_xlabel("FN : FP cost ratio (log scale)")
     ax2.set_ylabel("Rate / fraction")
     ax2.set_title("What being wrong about cost actually does")

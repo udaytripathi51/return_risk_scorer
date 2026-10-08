@@ -1,17 +1,16 @@
-"""Download IEEE-CIS Fraud Detection, or the ULB fallback (PROJECT_SPEC.md section 6.3).
+"""Download IEEE-CIS Fraud Detection, or the ULB fallback.
 
     python scripts/download_ieee.py            # IEEE-CIS (~590K labelled transactions)
     python scripts/download_ieee.py --ulb      # ULB credit-card fraud (smaller fallback)
 
 WHY THIS SCRIPT EXISTS
 ----------------------
-Section 6.3: `load_ieee_feature_validation()` used to catch the missing-file case and
-return a hardcoded all-True dict, so a validation that had never run reported success.
-The fix has two halves, and this file is the second one:
+An optional validation is only honest if it can actually run. Two halves make it so:
 
-  1. data/real_calibration.py now returns an explicit `not_validated` state (done).
-  2. The download step is documented and executable, so the check can genuinely run
-     rather than being permanently skipped (this file).
+  1. data/real_calibration.py returns an explicit `not_validated` state when the data is
+     absent, never a pass.
+  2. This script makes the download step documented and executable, so the check can
+     genuinely run rather than being permanently skipped.
 
 SETUP
 -----

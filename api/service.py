@@ -1,19 +1,18 @@
 """Scoring service: model loading, fail-closed scoring, SHAP reasons.
 
-FAIL-CLOSED IS THE WHOLE DESIGN (PROJECT_SPEC.md sections 1.2 and 6.7)
-----------------------------------------------------------------------
+FAIL-CLOSED IS THE WHOLE DESIGN
+-------------------------------
 There is exactly one way to reach `auto_approve`: a fully-parsed order whose model score
 came back below the threshold. Every other path -- unrecognised category, a missing
 model, an exception anywhere in feature assembly or inference -- returns
 `risk_score = 1.0` and `manual_review`.
 
-THE BUG THIS FIXES (section 6.7)
---------------------------------
-An unknown `category` used to be mapped to encoded index 0, so a category the model had
-never seen silently impersonated whichever known category happened to sort first
-("Apparel", here). That is worse than an error: it produces a confident, wrong,
-*approvable* score for an input the model has no basis to judge. It now routes to review
-with an explicit reason.
+UNKNOWN CATEGORIES ARE NEVER GUESSED
+------------------------------------
+A naive encoder maps an unseen `category` to index 0, so it silently impersonates
+whichever known category happens to sort first ("Apparel", here). That is worse than an
+error: it produces a confident, wrong, *approvable* score for an input the model has no
+basis to judge. Here an unknown category routes to review with an explicit reason.
 """
 from __future__ import annotations
 
@@ -150,7 +149,7 @@ class RiskScoringService:
             )
 
         category = order.get("category")
-        # Section 6.7 fix: unknown category fails closed instead of impersonating index 0.
+        # An unknown category fails closed instead of impersonating a known one.
         if category not in list(self.encoder.classes_):
             return _fail_closed(
                 f'Unrecognized category "{category}" — routed to manual review',

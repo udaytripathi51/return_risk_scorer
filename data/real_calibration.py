@@ -1,4 +1,4 @@
-"""Real-dataset grounding (PROJECT_SPEC.md sections 6.1 and 6.3).
+"""Real-dataset grounding: what public data can and cannot validate here.
 
 Three DISTINCT roles, deliberately not conflated:
 
@@ -15,13 +15,12 @@ Three DISTINCT roles, deliberately not conflated:
    corrected generator in data/synthetic.py and say so plainly in the model card. This is
    a disclosed data gap, not a corner cut.
 
-THE BUG THIS FIXES (section 6.3)
---------------------------------
-`load_ieee_feature_validation()` previously caught the missing-file case and returned a
-hardcoded all-True dict, so a validation that had never run reported success. On a track
-judged on honest metrics that is exactly the wrong failure mode. The absent-file case is
-now a distinct, explicitly labelled `not_validated` state that propagates into the model
-card. It can never be mistaken for a pass.
+AN UNRUN CHECK IS NEVER A PASS
+------------------------------
+When the IEEE-CIS file is absent, `load_ieee_feature_validation()` returns a distinct,
+explicitly labelled `not_validated` state that propagates into the model card. It carries
+no per-feature results and nothing that reads as success, so a validation that never ran
+can never be mistaken for one that passed.
 """
 from __future__ import annotations
 
@@ -145,8 +144,8 @@ def load_ieee_feature_validation() -> dict[str, Any]:
         ),
         "note": (
             "This state is reported verbatim in the model card. It is explicitly NOT a "
-            "success result: the previous version of this function returned an all-True "
-            "dict here, which made an unrun check look validated."
+            "success result: a check that did not run carries no per-feature results and "
+            "nothing that reads as a pass."
         ),
     }
 

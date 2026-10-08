@@ -129,7 +129,7 @@ def business_impact(
     cost_fp: float = COST_FP,
     cost_fn: float = COST_FN,
 ) -> dict[str, Any]:
-    """ILLUSTRATIVE order-of-magnitude translation (PROJECT_SPEC.md section 7.7).
+    """ILLUSTRATIVE order-of-magnitude translation of the measured confusion matrix.
 
     Scales the measured confusion matrix up to a round volume. This is arithmetic on top
     of measured rates, not a forecast: it inherits every assumption in the cost model and

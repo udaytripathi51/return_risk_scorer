@@ -1,15 +1,13 @@
-"""Adversarial held-out slice (PROJECT_SPEC.md section 6.4).
+"""Adversarial held-out slice: how the model holds up against an adapted abuser.
 
-THE BUG THIS FIXES
-------------------
-The previous adversarial generator drew `is_fraud` first at a flat 15% rate, then shifted
-`order_value` and `days_to_return` upward for the fraud rows -- the same causal-ordering
-mistake as section 6.1, only weaker. The resulting "adversarial gap" therefore measured
-how much that particular leak had been softened, not whether the model generalises to
-fraud that does not look like the training distribution.
+A stress slice is only meaningful if its label is not leaked either. Drawing `is_fraud`
+first and then shifting `order_value` or `days_to_return` for the fraud rows would
+measure how well the model reads that shift, not whether it generalises to fraud that
+does not look like the training distribution. So this slice uses the same causal design
+as the main generator.
 
-WHAT THIS SLICE ACTUALLY MODELS
--------------------------------
+WHAT THIS SLICE MODELS
+----------------------
 An *adapted* abuser: someone who has worked out roughly what gets flagged and is
 deliberately staying inside normal-looking bounds. Concretely they
   - keep their observable return-rate history close to the legitimate population,
@@ -20,7 +18,7 @@ deliberately staying inside normal-looking bounds. Concretely they
   - and do not use throwaway ("burner") accounts, so the latent burner term of the label
     carries no signal here at all.
 
-The construction is identical in *form* to section 6.1 -- a latent
+The construction is identical in *form* to data/synthetic.py -- a latent
 `looks_genuine_fraudster` trait tilts the distributions, and the label is drawn from the
 trait -- but every tilt is roughly a third to a half the size. Nothing is edited after
 the label is realised.
@@ -53,7 +51,7 @@ logger = logging.getLogger(__name__)
 ADAPTED_RATE = 0.15
 
 # Discount mix for an adapted abuser: nudged toward higher discounts, but far closer to
-# the legitimate profile than the section 6.1 fraudster mix.
+# the legitimate profile than the main generator's fraudster mix.
 DISCOUNT_P_ADAPTED = np.array([0.17, 0.23, 0.20, 0.16, 0.12, 0.08, 0.04])
 DISCOUNT_P_LEGIT = np.array([0.20, 0.25, 0.20, 0.15, 0.10, 0.07, 0.03])
 
@@ -166,7 +164,7 @@ def generate_adversarial(
     )
 
     # --- Label, from the latent trait only ------------------------------------------
-    # Same functional form as section 6.1. No feature is rewritten after this line.
+    # Same functional form as data/synthetic.py. No feature is rewritten after this line.
     fraud_prob = np.minimum(
         0.55 * adapted.astype(float) + 0.08 * is_burner.astype(float) + 0.04, 0.95
     )

@@ -6,7 +6,7 @@ change here cannot drift between training and serving.
 """
 from __future__ import annotations
 
-# --- Category taxonomy (matches the API contract in PROJECT_SPEC.md section 5) ------
+# --- Category taxonomy (matches the API contract in api/schemas.py) ----------------
 CATEGORIES: list[str] = ["Apparel", "Beauty", "Books", "Electronics", "Home"]
 
 # Baseline *return* (not fraud) rate per category. These are the merchant-observable
@@ -43,7 +43,7 @@ CATEGORY_VALUE_PARAMS: dict[str, tuple[float, float, float]] = {
 # NOTE: `is_prepaid` is accepted by the API but deliberately NOT a model feature: it is
 # definitionally 1 - is_cod. Feeding a perfectly collinear duplicate lets the booster
 # split importance arbitrarily across the pair, which would weaken the per-feature
-# importance cap enforced by the leakage test (section 7.1). The API keeps the field and
+# importance cap enforced by the leakage test suite. The API keeps the field and
 # validates the identity instead, so an inconsistent payload fails closed.
 FEATURES: list[str] = [
     "customer_return_rate_lt",
@@ -63,7 +63,7 @@ FEATURES: list[str] = [
     "rto_risk_score",
 ]
 
-# --- Cost assumptions (see PROJECT_SPEC.md section 7.4; ILLUSTRATIVE) ----------------
+# --- Cost assumptions (ILLUSTRATIVE; see evaluate/sensitivity.py) -------------------
 # FN: a fraudulent return approved. Unrecovered cost-of-goods on a mid-value order
 #     (~ INR 380) + reverse logistics (~ INR 80) + support handling (~ INR 40).
 # FP: a genuine return sent to manual review. ~8 min of an ops reviewer's time at a

@@ -1,4 +1,4 @@
-"""Probability calibration reporting (PROJECT_SPEC.md section 7.2).
+"""Probability calibration reporting.
 
 The deliverable is a risk *score*, not just a binary action, so the number on the 0-1
 axis has to mean something. "0.7" should mean roughly 70 out of 100 such requests are
@@ -13,8 +13,9 @@ output: raw scores come out systematically inflated. So the raw model is a good 
 and a bad *probability estimator*, and the fix is a Platt calibrator fitted on the
 validation fold -- STRICTLY monotone, so it introduces no ties and PR-AUC, ROC-AUC and
 every SHAP attribution are preserved exactly, while the Brier score improves.
-(Isotonic regression was measured first and rejected: its step function tied thousands of
-rows together and cost ~3% of PR-AUC. See models/train.py.)
+(Isotonic regression was measured head-to-head and rejected: its step function ties
+thousands of rows together and costs PR-AUC. `compare_isotonic()` below re-measures that on every run,
+so the claim stays reproducible rather than asserted. See models/train.py.)
 
 This module reports Brier BEFORE and AFTER, plus a reliability diagram, so the
 improvement is visible rather than asserted.
@@ -132,7 +133,52 @@ def evaluate_calibration(
         "note": (
             "Platt calibration is fitted on the validation fold only and is strictly "
             "monotone, so PR-AUC, ROC-AUC and all SHAP attributions are identical "
-            "before and after -- only the probability scale changes. Isotonic was "
-            "measured first and rejected: its ties cost ~3% of PR-AUC."
+            "before and after -- only the probability scale changes. Isotonic is "
+            "re-measured on every run (see isotonic_comparison) and rejected because "
+            "its ties cost PR-AUC."
         ),
+    }
+
+
+def compare_isotonic(
+    p_val_raw: np.ndarray,
+    y_val: np.ndarray,
+    p_test_raw: np.ndarray,
+    y_test: np.ndarray,
+    p_test_platt: np.ndarray,
+    n_bins: int = 10,
+) -> dict[str, Any]:
+    """Re-measure the Platt-vs-isotonic decision instead of asserting it.
+
+    Isotonic is fitted on the same validation fold as Platt and both are scored on the
+    test fold. Reported: how many distinct scores isotonic's step function leaves, how
+    many rows end up tied, the PR-AUC and Brier of each, and how many rows isotonic maps
+    to exactly 1.0 -- the value reserved for the fail-closed path.
+    """
+    from sklearn.isotonic import IsotonicRegression
+    from sklearn.metrics import average_precision_score
+
+    iso = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+    iso.fit(p_val_raw, y_val)
+    p_iso = iso.predict(p_test_raw)
+    _, counts = np.unique(p_iso, return_counts=True)
+    # Platt is strictly monotone, so it only "ties" rows the booster itself scored
+    # identically (same leaves in every tree) -- reported for an honest comparison.
+    _, counts_platt = np.unique(p_test_platt, return_counts=True)
+    pr_platt = float(average_precision_score(y_test, p_test_platt))
+    pr_iso = float(average_precision_score(y_test, p_iso))
+    return {
+        "distinct_test_scores_platt": int(len(np.unique(p_test_platt))),
+        "distinct_test_scores_isotonic": int(len(counts)),
+        "rows_in_ties_platt": int(counts_platt[counts_platt > 1].sum()),
+        "rows_in_ties_isotonic": int(counts[counts > 1].sum()),
+        "rows_at_exactly_1_isotonic": int((p_iso >= 1.0).sum()),
+        "pr_auc_platt": round(pr_platt, 4),
+        "pr_auc_isotonic": round(pr_iso, 4),
+        "pr_auc_change_pct": round(100 * (pr_iso - pr_platt) / pr_platt, 2) if pr_platt else 0.0,
+        "brier_platt": round(float(brier_score_loss(y_test, p_test_platt)), 5),
+        "brier_isotonic": round(float(brier_score_loss(y_test, p_iso)), 5),
+        "ece_platt": round(expected_calibration_error(y_test, p_test_platt, n_bins), 5),
+        "ece_isotonic": round(expected_calibration_error(y_test, p_iso, n_bins), 5),
+        "chosen": "platt",
     }

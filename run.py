@@ -2,9 +2,11 @@
 
     python run.py
 
-Every number in README.md, models/MODEL_CARD.md and PROJECT_GUIDE.md is produced by this
-script and written to outputs/metrics.json. Nothing is hand-copied, so re-running this is
-the reproduction check.
+Writes outputs/metrics.json, the three plots in outputs/ and models/MODEL_CARD.md. The
+model card is generated from metrics.json, so none of its numbers is hand-edited. The
+README, PROJECT_GUIDE.md and ARCHITECTURE.md quote numbers from metrics.json (and, for
+the "Compared to what?" table, from outputs/diagnostics.json written by
+`python -m evaluate.diagnostics`), so re-running both is the reproduction check.
 """
 from __future__ import annotations
 
@@ -19,7 +21,7 @@ from config import CATEGORIES, COST_FN, COST_FP, RANDOM_SEED
 from data.adversarial import generate_adversarial
 from data.real_calibration import load_ieee_feature_validation, load_olist_calibration
 from data.synthetic import generate_dataset, summarise
-from evaluate.calibration import evaluate_calibration
+from evaluate.calibration import compare_isotonic, evaluate_calibration
 from evaluate.cost_curve import plot_cost_curve
 from evaluate.leakage_test import run_leakage_checks
 from evaluate.metrics import (
@@ -59,7 +61,7 @@ def main() -> dict[str, Any]:
     category_share = olist.get("category_share") if olist["status"] == "calibrated" else None
 
     # --- 2. Data --------------------------------------------------------------------
-    _banner("2/7  Generating data (latent-trait design, section 6.1)")
+    _banner("2/7  Generating data (latent-trait design)")
     df = generate_dataset(n_customers=N_CUSTOMERS, rng=rng, category_share=category_share)
     stats = summarise(df)
     print(f"  return requests={stats['n_return_requests']}  "
@@ -94,6 +96,13 @@ def main() -> dict[str, Any]:
                                  out_path=f"{OUT_DIR}/calibration.png")
     print(f"  Brier {calib['brier_raw']:.5f} (raw) -> {calib['brier_calibrated']:.5f} "
           f"(calibrated), {calib['brier_improvement_pct']:.1f}% better")
+    p_val_raw = model.predict_proba(s["X_val"])[:, 1]
+    iso = compare_isotonic(p_val_raw, s["y_val"], p_test_raw, y_test, p_test)
+    calib["isotonic_comparison"] = iso
+    print(f"  isotonic (rejected): {iso['distinct_test_scores_platt']} distinct scores -> "
+          f"{iso['distinct_test_scores_isotonic']} levels, PR-AUC "
+          f"{iso['pr_auc_platt']:.4f} -> {iso['pr_auc_isotonic']:.4f}, "
+          f"Brier {iso['brier_platt']:.5f} vs {iso['brier_isotonic']:.5f}")
 
     curve = plot_cost_curve(y_test, p_test, threshold, out_path=f"{OUT_DIR}/cost_curve.png")
     sens = run_sensitivity(y_test, p_test, threshold, cost_fp=COST_FP,
@@ -104,7 +113,7 @@ def main() -> dict[str, Any]:
     print(f"  max regret across FN:FP ratios 2x-50x: {sens['max_regret_pct']:.1f}%")
 
     # --- 5. Adversarial slice -------------------------------------------------------
-    _banner("5/7  Adversarial slice (adapted abuser, section 6.4)")
+    _banner("5/7  Adversarial slice (adapted abuser)")
     adv_df = generate_adversarial(n_rows=12_000, rng=np.random.default_rng(2026))
     X_adv = prepare_features(adv_df, encoder)
     y_adv = adv_df["is_fraud"].to_numpy()
@@ -117,7 +126,7 @@ def main() -> dict[str, Any]:
           f"(base rate {gap['adversarial_base_rate']:.4f})")
 
     # --- 6. Leakage checks ----------------------------------------------------------
-    _banner("6/7  Leakage smell test (section 7.1)")
+    _banner("6/7  Leakage test suite")
     leak = run_leakage_checks(n_customers=N_CUSTOMERS, seed=RANDOM_SEED, verbose=True)
 
     # --- 7. Business impact + model card --------------------------------------------
@@ -157,6 +166,25 @@ def main() -> dict[str, Any]:
     print(f"\n  wrote {OUT_DIR}/metrics.json, models/MODEL_CARD.md and 3 plots")
     print("\nPipeline complete.\n")
     return metrics
+
+
+def _isotonic_section(iso: dict[str, Any] | None) -> str:
+    if not iso:
+        return ""
+    return f"""
+## Calibration choice (re-measured on every run)
+
+Both calibrators are fitted on the validation fold and scored on the test fold.
+
+| | Platt (used) | Isotonic (rejected) |
+|---|---|---|
+| Distinct scores on the test set | {iso['distinct_test_scores_platt']:,} | {iso['distinct_test_scores_isotonic']:,} |
+| Rows sharing a score with another row | {iso['rows_in_ties_platt']:,} | {iso['rows_in_ties_isotonic']:,} |
+| Rows scored exactly 1.0 (the fail-closed sentinel) | 0 | {iso['rows_at_exactly_1_isotonic']} |
+| PR-AUC | {iso['pr_auc_platt']:.4f} | {iso['pr_auc_isotonic']:.4f} ({iso['pr_auc_change_pct']:+.1f}%) |
+| Brier score | {iso['brier_platt']:.5f} | {iso['brier_isotonic']:.5f} |
+| Expected calibration error | {iso['ece_platt']:.5f} | {iso['ece_isotonic']:.5f} |
+"""
 
 
 def write_model_card(m: dict[str, Any]) -> None:
@@ -200,7 +228,7 @@ fraud-labelled), or not India-specific. This is a disclosed data gap.
 - **Olist calibration (order/category distributions):** `{olist['status']}`
 - **IEEE-CIS feature-family validation:** `{ieee['status']}`{
   '' if ieee['status'] != 'not_validated'
-  else '  — the check did NOT run. This is explicitly not a pass; see section 6.3 of the spec.'}
+  else '  — the check did NOT run. This is explicitly not a pass.'}
 
 ## Headline metrics (held-out test set)
 
@@ -216,9 +244,10 @@ fraud-labelled), or not India-specific. This is a disclosed data gap.
 | Expected calibration error | {cal['ece_calibrated']:.5f} |
 
 PR-AUC of ~{r['pr_auc']:.2f} against a ~{r['base_rate']:.0%} base rate is a genuine
-~{r['pr_auc_lift_over_baseline']:.1f}x lift. It is deliberately **not** the ~0.95 the
-pre-fix pipeline reported: that number came from a label leak, not from skill.
-
+~{r['pr_auc_lift_over_baseline']:.1f}x lift. A PR-AUC near 0.95 on data like this would be
+the signature of a label leak, not of skill; the leakage suite exists to catch exactly
+that, and it fails a deliberately leaky control (`evaluate/leakage_test.py`).
+{_isotonic_section(cal.get('isotonic_comparison'))}
 ## Operating point (threshold {m['operating_point']['threshold']:.4f})
 
 Chosen on the **validation** fold by minimising expected cost. The test set was scored
@@ -284,7 +313,7 @@ Per **{bi['per_n_returns']:,}** return requests, at the operating point above:
 ## Limitations
 
 1. **Synthetic training data.** Absolute metrics reflect the generator's assumptions.
-   The *relative* claims (leak fixed, importance spread, graceful ablation) transfer;
+   The *relative* claims (no label leak, importance spread, graceful ablation) transfer;
    the absolute PR-AUC will not.
 2. **Cost assumptions are illustrative** (FP=INR {m['config']['cost_fp_inr']:.0f},
    FN=INR {m['config']['cost_fn_inr']:.0f}). See `outputs/cost_sensitivity.csv` for how

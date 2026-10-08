@@ -1,10 +1,10 @@
 # Top-level dependencies, with floors only.
 #
-# PROJECT_SPEC.md section 6.8: don't guess at upper bounds — the previous version pinned
-# nothing and broke on an xgboost 2.0 API change (see section 6.2). The fix is not to
-# invent ceilings here but to build reproducibly from requirements-lock.txt, which pins
-# the exact transitive closure that was actually tested. Use this file for development,
-# and requirements-lock.txt for Docker and CI.
+# No guessed upper bounds here: unpinned installs drift (xgboost 2.0, for example, moved
+# `early_stopping_rounds` from .fit() to the constructor), and invented ceilings age badly.
+# Reproducible builds come from requirements-lock.txt instead, which pins the exact
+# transitive closure that was tested. Use this file for development, and
+# requirements-lock.txt for Docker, Render and CI.
 
 # --- core ML ---
 numpy>=1.26
@@ -15,7 +15,6 @@ shap>=0.44
 
 # --- visualisation ---
 matplotlib>=3.7
-seaborn>=0.12
 
 # --- API ---
 fastapi>=0.110

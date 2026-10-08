@@ -1,35 +1,43 @@
-"""Automated label-leakage smell test (PROJECT_SPEC.md section 7.1).
+"""Automated label-leakage test suite.
 
-This is the check that makes the section 6.1 fix permanent and visible. It runs
-standalone (`python -m evaluate.leakage_test`), as a pytest (`tests/test_leakage.py`),
-and in CI on every push -- so a future change that reintroduces leakage fails the build
-rather than quietly inflating a headline metric.
+Label leakage is the failure that makes a fraud model look brilliant offline and useless in
+production: when a feature is effectively part of the label, the model reconstructs the
+label instead of learning fraud. This suite turns "no leakage" from a claim into a tested
+property. It runs standalone (`python -m evaluate.leakage_test`), as a pytest
+(`tests/test_leakage.py`) and in CI on every push, so a change that introduces leakage
+fails the build instead of quietly inflating a headline metric.
 
 THREE CHECKS
 ------------
-1. CONCENTRATION. No single feature may hold more than 25% of total gain importance.
-   A leaked label shows up as one feature swallowing the model: in the pre-fix version,
-   the order-value/COD/discount cluster dominated because the label was a function of
-   them.
+1. CONCENTRATION. No single feature may hold more than 25% of total gain importance. A
+   leaked label shows up as one feature, or a small cluster, swallowing the model.
 
 2. TOP-3 ABLATION. Drop the three most important features, retrain from scratch, and
-   require that PR-AUC falls by no more than 50% relative. A model reading a leaked
-   label formula collapses to near-baseline the moment those columns go (the pre-fix
-   model went ~0.95 -> ~0.32, a 66% relative fall). A model aggregating genuinely
-   distributed evidence degrades gracefully instead.
+   require that PR-AUC falls by no more than 50% relative. A model reading a leaked label
+   formula collapses towards the base rate once those columns go; a model aggregating
+   genuinely distributed evidence degrades gracefully.
 
-3. LABEL-SHUFFLE CONTROL. Retrain on permuted labels and require PR-AUC to collapse to
-   the no-skill baseline (the base rate). This is a control for the *pipeline* rather
-   than the data: if the split, encoding or calibration plumbing leaked information,
-   the shuffled model would still score above baseline. It should not.
+3. LABEL-SHUFFLE CONTROL. Retrain on permuted labels and require PR-AUC to collapse to the
+   no-skill baseline (the base rate). This is a negative control for the train/evaluate
+   harness: with permuted labels there is nothing to learn, so a score above the base rate
+   would expose a harness defect -- scoring rows the model trained on, or test labels
+   reaching model selection. It cannot detect a feature computed from the label (permuting
+   breaks that relationship too); checks 1 and 2 target that.
+   Calibration is not exercised here: raw probabilities are used throughout.
+
+POSITIVE CONTROL: THE SUITE MUST BE ABLE TO FAIL
+------------------------------------------------
+A test that cannot fail proves nothing when it passes. `make_leaky_control()` builds a
+deliberately leaky copy of the data -- the label recomputed from four observable features,
+which are then pushed further out for the fraud rows, the textbook way a synthetic fraud
+dataset leaks -- and the suite is required to flag it. CI checks both directions: the real
+data passes and the leaky control fails.
 
 WHY 25% AND 50%
 ---------------
-Both are the thresholds named in the spec. They are deliberately loose -- they are
-tripwires for the failure mode that actually occurred, not a claim that a model at 24%
-concentration is well-behaved. They are asserted against, never tuned to fit: when the
-first build came in at 27% and the second at 29.9%, the generator's account-age
-assumption was corrected on realism grounds, not the threshold.
+They are deliberately loose tripwires for the failure mode above, not a claim that a model
+at 24% concentration is well-behaved. They are asserted against, never tuned to fit: the
+generator's design (`data/synthetic.py`) is what keeps the real model inside them.
 """
 from __future__ import annotations
 
@@ -39,6 +47,7 @@ import os
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from sklearn.metrics import average_precision_score
 
 from config import RANDOM_SEED
@@ -56,16 +65,51 @@ def _pr_auc(model, X, y) -> float:
     return float(average_precision_score(y, model.predict_proba(X)[:, 1]))
 
 
+def make_leaky_control(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """A deliberately leaky copy of `df`: the positive control for this suite.
+
+    The label is recomputed FROM four observable features -- order value, the COD flag,
+    discount and days to return -- and those same features are then pushed further out
+    for the rows that came up fraudulent. That is the textbook way a synthetic fraud
+    dataset leaks its label, and every check above should flag it. Used only by the
+    tests and the standalone run; never by training.
+    """
+    out = df.copy()
+    log_value = np.log(out["order_value"])
+    z = (
+        0.9 * (log_value - log_value.mean()) / log_value.std()
+        + 0.8 * out["is_cod"]
+        + 0.04 * out["discount_percentage"]
+        + 0.12 * out["days_to_return"]
+        - 4.4
+    )
+    y = (rng.random(len(out)) < 1.0 / (1.0 + np.exp(-z))).astype(int)
+    fraud = y == 1
+    out["is_fraud"] = y
+    out.loc[fraud, "order_value"] = out.loc[fraud, "order_value"] * 1.5
+    out.loc[fraud, "discount_percentage"] = np.minimum(
+        out.loc[fraud, "discount_percentage"] + 20, 90
+    )
+    out.loc[fraud, "days_to_return"] = out.loc[fraud, "days_to_return"] + 6
+    return out
+
+
 def run_leakage_checks(
     n_customers: int = 40_000,
     seed: int = RANDOM_SEED,
     verbose: bool = True,
+    df: pd.DataFrame | None = None,
+    title: str = "Leakage test suite",
 ) -> dict[str, Any]:
-    """Train, ablate and shuffle. Returns a full result dict; raises nothing."""
+    """Train, ablate and shuffle. Returns a full result dict; raises nothing.
+
+    Runs on a freshly generated dataset unless `df` is given (the positive control passes
+    its leaky copy here).
+    """
     from data.synthetic import generate_dataset
 
-    rng = np.random.default_rng(seed)
-    df = generate_dataset(n_customers=n_customers, rng=rng)
+    if df is None:
+        df = generate_dataset(n_customers=n_customers, rng=np.random.default_rng(seed))
     encoder = build_encoder()
     train_df, val_df, test_df = split_by_customer(df, seed=seed)
 
@@ -143,16 +187,16 @@ def run_leakage_checks(
     result["all_passed"] = bool(check1_pass and check2_pass and check3_pass)
 
     if verbose:
-        _print_report(result)
+        _print_report(result, title)
     return result
 
 
-def _print_report(r: dict[str, Any]) -> None:
+def _print_report(r: dict[str, Any], title: str = "Leakage test suite") -> None:
     def mark(ok: bool) -> str:
         return "PASS" if ok else "FAIL"
 
     c, a, s = r["concentration"], r["top3_ablation"], r["label_shuffle_control"]
-    print("\n=== Leakage smell test " + "=" * 47)
+    print(f"\n=== {title} " + "=" * max(4, 66 - len(title)))
     print(f"dataset: {r['n_return_requests']} return requests, "
           f"base rate {r['test_base_rate']:.4f}\n")
 
@@ -178,10 +222,25 @@ def _print_report(r: dict[str, Any]) -> None:
 
 
 if __name__ == "__main__":
+    from data.synthetic import generate_dataset
+
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
-    res = run_leakage_checks(n_customers=60_000)
+    res = run_leakage_checks(n_customers=60_000, title="Leakage test suite: project data")
+
+    leaky = make_leaky_control(
+        generate_dataset(n_customers=60_000, rng=np.random.default_rng(RANDOM_SEED)),
+        rng=np.random.default_rng(RANDOM_SEED + 2),
+    )
+    control = run_leakage_checks(
+        n_customers=60_000, df=leaky, title="Positive control: deliberately leaky data"
+    )
+    caught = not control["all_passed"]
+    print("Positive control:", "leak detected, as required" if caught
+          else "LEAK NOT DETECTED -- the suite has lost its teeth")
+
+    res["positive_control"] = control
     os.makedirs("outputs", exist_ok=True)
     with open("outputs/leakage_report.json", "w", encoding="utf-8") as f:
         json.dump(res, f, indent=2)
     print("wrote outputs/leakage_report.json")
-    raise SystemExit(0 if res["all_passed"] else 1)
+    raise SystemExit(0 if res["all_passed"] and caught else 1)

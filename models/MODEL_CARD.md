@@ -28,7 +28,7 @@ every public "return prediction" dataset is explicitly synthetic, generic (not
 fraud-labelled), or not India-specific. This is a disclosed data gap.
 
 - **Olist calibration (order/category distributions):** `not_calibrated`
-- **IEEE-CIS feature-family validation:** `not_validated`  — the check did NOT run. This is explicitly not a pass; see section 6.3 of the spec.
+- **IEEE-CIS feature-family validation:** `not_validated`  — the check did NOT run. This is explicitly not a pass.
 
 ## Headline metrics (held-out test set)
 
@@ -44,8 +44,22 @@ fraud-labelled), or not India-specific. This is a disclosed data gap.
 | Expected calibration error | 0.01417 |
 
 PR-AUC of ~0.44 against a ~13% base rate is a genuine
-~3.5x lift. It is deliberately **not** the ~0.95 the
-pre-fix pipeline reported: that number came from a label leak, not from skill.
+~3.5x lift. A PR-AUC near 0.95 on data like this would be
+the signature of a label leak, not of skill; the leakage suite exists to catch exactly
+that, and it fails a deliberately leaky control (`evaluate/leakage_test.py`).
+
+## Calibration choice (re-measured on every run)
+
+Both calibrators are fitted on the validation fold and scored on the test fold.
+
+| | Platt (used) | Isotonic (rejected) |
+|---|---|---|
+| Distinct scores on the test set | 6,684 | 50 |
+| Rows sharing a score with another row | 4 | 6,663 |
+| Rows scored exactly 1.0 (the fail-closed sentinel) | 0 | 10 |
+| PR-AUC | 0.4369 | 0.4205 (-3.8%) |
+| Brier score | 0.08805 | 0.08881 |
+| Expected calibration error | 0.01417 | 0.01565 |
 
 ## Operating point (threshold 0.0994)
 
@@ -112,7 +126,7 @@ ILLUSTRATIVE, order-of-magnitude only. Derived from measured confusion rates on 
 ## Limitations
 
 1. **Synthetic training data.** Absolute metrics reflect the generator's assumptions.
-   The *relative* claims (leak fixed, importance spread, graceful ablation) transfer;
+   The *relative* claims (no label leak, importance spread, graceful ablation) transfer;
    the absolute PR-AUC will not.
 2. **Cost assumptions are illustrative** (FP=INR 50,
    FN=INR 500). See `outputs/cost_sensitivity.csv` for how

@@ -1,0 +1,10 @@
+# Store text files with LF line endings in the repository, whatever the editor or OS
+# uses locally. Without this, a commit from Windows can turn every line of a file into
+# a diff.
+* text=auto
+
+# Never touch these: a line-ending conversion would corrupt a pickled model or an image.
+*.pkl binary
+*.png binary
+*.jpg binary
+*.gif binary

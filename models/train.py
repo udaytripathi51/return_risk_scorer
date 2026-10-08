@@ -1,26 +1,23 @@
-"""Model training (PROJECT_SPEC.md section 6.2).
+"""Model training: grouped three-way split, XGBoost, Platt calibration, cost threshold.
 
-THE BUG THIS FIXES
-------------------
-`early_stopping_rounds` was passed to `.fit()`. On xgboost >= 2.0 that raises
-`TypeError: XGBClassifier.fit() got an unexpected keyword argument
-'early_stopping_rounds'` -- verified here against xgboost 3.4.1. It belongs on the
-constructor.
+EARLY STOPPING ON THE CONSTRUCTOR
+---------------------------------
+`early_stopping_rounds` is set on the `XGBClassifier` constructor, the xgboost >= 2.0 API
+(passing it to `.fit()` raises a TypeError there; verified against xgboost 3.4.1).
 
-TWO DELIBERATE DEVIATIONS FROM THE SPEC SNIPPET
------------------------------------------------
-1. THREE-WAY SPLIT, NOT TWO. The snippet in section 6.2 passes the *test* set as
-   `eval_set`, which makes the test set part of model selection: early stopping picks
-   the tree count that looks best on it, so the reported test metric is optimistic. We
-   split train / validation / test, early-stop on validation, pick the decision
-   threshold on validation, and touch the test set exactly once at the end.
+TWO SPLIT DECISIONS THAT KEEP THE TEST SET HONEST
+-------------------------------------------------
+1. THREE-WAY SPLIT, NOT TWO. A common pattern passes the *test* set as `eval_set`, which
+   makes the test set part of model selection: early stopping picks the tree count that
+   looks best on it, so the reported test metric is optimistic. We split train /
+   validation / test, early-stop on validation, pick the decision threshold on
+   validation, and touch the test set exactly once at the end.
 
 2. GROUPED SPLIT ON customer_id. A customer contributes several return requests, and
    customer-level features (return-rate history, account age, ring membership) are
    near-constant within a customer. A row-wise split would put the same customer on both
-   sides and let the model memorise individuals -- a second, subtler leak of the same
-   family as section 6.1. `GroupShuffleSplit` keeps every customer wholly inside one
-   split.
+   sides and let the model memorise individuals -- a subtler leak of the same family as
+   a leaked label. `GroupShuffleSplit` keeps every customer wholly inside one split.
 
 CALIBRATION: PLATT, NOT ISOTONIC -- AND WHY
 -------------------------------------------
@@ -29,18 +26,19 @@ positive class, so raw outputs are not probabilities at all, they are inflated s
 Since the deliverable is a risk *score* and not just a binary action, we calibrate on the
 validation fold.
 
-Isotonic regression was the first choice -- it is the standard recommendation for tree
-ensembles -- and it was measured and rejected. Isotonic is only WEAKLY monotone: it is a
-step function, so it maps whole ranges of raw scores onto a single value. On this data it
-collapsed 4,187 distinct test scores into 41 levels, tying 4,443 rows together, and those
-ties cost real ranking quality: PR-AUC fell from 0.4488 to 0.4353. It also emitted exactly
-1.0 for a few rows, colliding with the sentinel value the fail-closed path uses.
+Isotonic regression is the standard recommendation for tree ensembles, so it was measured
+head-to-head and rejected. Isotonic is only WEAKLY monotone: it is a
+step function, so it maps whole ranges of raw scores onto a single value. On the committed
+model it collapses 6,684 distinct test scores into 50 levels, and those ties cost real
+ranking quality: PR-AUC falls from 0.4369 to 0.4205. It also scores 10 test rows at
+exactly 1.0, colliding with the sentinel value the fail-closed path uses.
 
 Platt scaling (a logistic regression on the log-odds of the raw score) is STRICTLY
-monotone, so it introduces no ties and preserves PR-AUC and ROC-AUC exactly. Measured
-head-to-head on the same fold it also calibrated slightly BETTER (Brier 0.09354 vs
-0.09419). Strictly better on every axis, so Platt it is. Both before/after Brier scores
-are reported by evaluate/calibration.py so the improvement is visible, not asserted.
+monotone, so it adds no ties and preserves PR-AUC and ROC-AUC exactly. Measured
+head-to-head on the same fold it also calibrates slightly BETTER (Brier 0.08805 vs
+0.08881). Strictly better on every axis, so Platt it is.
+evaluate/calibration.py::compare_isotonic re-measures this on every run, so the choice
+stays visible rather than asserted.
 """
 from __future__ import annotations
 
@@ -70,7 +68,8 @@ METADATA_PATH = os.path.join(MODEL_DIR, "metadata.json")
 
 def build_encoder() -> LabelEncoder:
     """Encoder fitted on the FIXED taxonomy, not on whatever happened to appear in the
-    training sample. Anything outside it must fail closed at serving time (section 6.7),
+    training sample. Anything outside it must fail closed at serving time (see
+    api/service.py),
     so the class list has to be a deliberate contract rather than a data artefact."""
     enc = LabelEncoder()
     enc.fit(CATEGORIES)
@@ -128,7 +127,7 @@ def fit_model(
         scale_pos_weight=scale_pos,
         random_state=seed,
         eval_metric="aucpr",
-        early_stopping_rounds=30,   # constructor, NOT .fit() -- this is the section 6.2 fix
+        early_stopping_rounds=30,   # constructor, NOT .fit(): the xgboost >= 2.0 API
         n_jobs=-1,
         tree_method="hist",
     )

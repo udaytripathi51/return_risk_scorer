@@ -23,7 +23,7 @@ def trained(dataset):
     return train(dataset, seed=7, persist=False)
 
 
-# --- section 6.1: the generator must not leak the label ------------------------------
+# --- the generator must not leak the label --------------------------------------------
 
 
 def test_latent_traits_are_not_exported(dataset):
@@ -36,9 +36,9 @@ def test_latent_traits_are_not_exported(dataset):
 
 
 def test_no_single_feature_separates_the_label(dataset):
-    """The pre-fix generator amplified order_value / is_cod / discount / days_to_return
-    for fraud rows after the label was drawn, which made each of them individually near-
-    diagnostic. Every feature must now overlap heavily across classes."""
+    """A leaky generator amplifies order_value / is_cod / discount / days_to_return for
+    fraud rows after the label is drawn, which makes each of them individually near-
+    diagnostic. Here every feature must overlap heavily across classes."""
     fraud = dataset[dataset["is_fraud"] == 1]
     legit = dataset[dataset["is_fraud"] == 0]
     for col in ("order_value", "discount_percentage", "days_to_return", "is_cod"):
@@ -70,12 +70,12 @@ def test_all_contract_features_present(dataset):
     assert ((dataset["is_prepaid"] + dataset["is_cod"]) == 1).all()
 
 
-# --- section 6.2 + training ----------------------------------------------------------
+# --- training ------------------------------------------------------------------------
 
 
-def test_training_completes_without_early_stopping_crash(trained):
-    """Regression test for section 6.2: `early_stopping_rounds` on `.fit()` raises
-    TypeError on xgboost >= 2.0. It belongs on the constructor."""
+def test_early_stopping_is_configured_on_the_constructor(trained):
+    """xgboost >= 2.0 takes `early_stopping_rounds` on the constructor (passing it to
+    `.fit()` raises TypeError), and training must complete with it set there."""
     model = trained["model"]
     assert model is not None
     assert hasattr(model, "best_iteration")
@@ -99,7 +99,7 @@ def test_model_beats_the_no_skill_baseline(trained):
     pr_auc = average_precision_score(y, p)
     base = y.mean()
     assert pr_auc > base * 1.8, f"PR-AUC {pr_auc:.4f} vs base rate {base:.4f}"
-    # And must NOT reach the pre-fix ~0.95, which was leakage rather than skill.
+    # And must NOT approach ~0.95, which on this label-noise level would mean leakage.
     assert pr_auc < 0.75, (
         f"PR-AUC {pr_auc:.4f} is implausibly high for this label-noise level — "
         "check whether leakage has been reintroduced"
@@ -116,8 +116,8 @@ def test_calibration_is_strictly_monotone_so_ranking_is_preserved(trained):
     """Platt calibration must not change PR-AUC at all -- it only rescales the axis.
 
     This is exactly why isotonic was rejected: as a step function it is only *weakly*
-    monotone, so it ties rows together and measurably degrades PR-AUC. A regression back
-    to isotonic (or any binning calibrator) fails here.
+    monotone, so it ties rows together and measurably degrades PR-AUC. Swapping in
+    isotonic (or any binning calibrator) fails here.
     """
     s = trained["splits"]
     raw = trained["model"].predict_proba(s["X_test"])[:, 1]
@@ -151,7 +151,7 @@ def test_calibration_improves_brier(trained):
     assert brier_score_loss(y, cal) < brier_score_loss(y, raw)
 
 
-# --- section 6.4: adversarial slice --------------------------------------------------
+# --- adversarial slice ---------------------------------------------------------------
 
 
 def test_adversarial_slice_has_no_post_hoc_feature_edits():
@@ -174,12 +174,12 @@ def test_adversarial_slice_is_genuinely_harder(trained):
     assert average_precision_score(y, p) < average_precision_score(s["y_test"], p_in)
 
 
-# --- section 6.3: honest validation states -------------------------------------------
+# --- honest validation states ---------------------------------------------------------
 
 
 def test_missing_real_data_is_never_reported_as_a_pass():
-    """The exact bug from section 6.3: the absent-file branch used to return a hardcoded
-    all-True dict."""
+    """When the real data is absent the check did not run, so nothing in its result may
+    read as a pass: no per-feature results, no True values."""
     res = load_ieee_feature_validation()
     assert res["status"] in {"not_validated", "validated", "validated_fallback"}
     if res["status"] == "not_validated":
@@ -220,6 +220,28 @@ def test_explainer_reasons_are_ordered_by_absolute_contribution(trained):
     for row in reasons:
         mags = [abs(r["contribution"]) for r in row]
         assert mags == sorted(mags, reverse=True)
+
+
+def test_reason_text_handles_missing_values():
+    """NaN is what a missing value looks like after feature assembly; no template may
+    print it."""
+    from models.explainer import _reason_text
+
+    for feature in FEATURES:
+        for up in (True, False):
+            text = _reason_text(feature, float("nan"), up)
+            assert "nan" not in text.lower(), (feature, text)
+    assert "not supplied" in _reason_text("days_to_return", float("nan"), True)
+
+
+def test_keep_latent_leaves_observable_columns_unchanged():
+    """keep_latent exists only for evaluate/diagnostics.py (the oracle ceiling). It must
+    not change a single observable value."""
+    plain = generate_dataset(n_customers=2_000, rng=np.random.default_rng(5))
+    with_latent = generate_dataset(n_customers=2_000, rng=np.random.default_rng(5),
+                                   keep_latent=True)
+    assert with_latent[plain.columns].equals(plain)
+    assert {"_is_fraudster", "_is_burner"} <= set(with_latent.columns)
 
 
 def test_encoder_covers_the_fixed_taxonomy():

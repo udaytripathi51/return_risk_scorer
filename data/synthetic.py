@@ -1,13 +1,14 @@
-"""Corrected synthetic generator for return-fraud data (PROJECT_SPEC.md section 6.1).
+"""Synthetic generator for return-fraud data, built so the label cannot leak.
 
-THE BUG THIS FIXES
-------------------
-The previous generator built `fraud_prob` from `order_value`, `is_cod`,
-`discount_percentage` and `days_to_return`, drew `is_fraud` from it, and *then* pushed
-those same features further out for the rows that came up fraudulent. A derived
-`rto_risk_score` re-combined the same signals a third time. The model therefore learned
-to invert the label formula rather than to recognise fraud, and PR-AUC of ~0.95
-collapsed to ~0.32 the moment those features were withheld.
+THE TRAP THIS DESIGN AVOIDS
+---------------------------
+The obvious way to synthesise fraud data is to compute `fraud_prob` from observable
+features (`order_value`, `is_cod`, `discount_percentage`, `days_to_return`), draw
+`is_fraud` from it, and then push those same features further out for the rows that came
+up fraudulent. A model trained on that data learns to invert the label formula rather
+than to recognise fraud: it reaches a PR-AUC in the 0.9s that collapses the moment those
+features are withheld. `evaluate/leakage_test.py::make_leaky_control` builds exactly that
+dataset as a positive control, and the leakage suite fails it.
 
 THE CAUSAL STRUCTURE USED INSTEAD
 ---------------------------------
@@ -22,21 +23,19 @@ THE CAUSAL STRUCTURE USED INSTEAD
 
 WHY THE LABEL USES A LATENT `is_burner` AND NOT `account_age < 30`
 ------------------------------------------------------------------
-PROJECT_SPEC.md section 6.1 sketches the label as
-`0.55*is_fraudster + 0.08*(account_age < 30) + 0.04`. That sketch still puts an
-*observed model feature* (account age) directly inside the label formula, which
-contradicts the principle the same section is there to enforce: no feature used to
-construct the label may also be fed to the model. It also plants a sharp discontinuity
-at exactly 30 days that a tree ensemble will find and exploit -- when we built it that
-way, `customer_account_age_days` took 27% of total gain importance, over the 25% cap
-the leakage test in section 7.1 enforces.
+A natural way to write the label is `0.55*is_fraudster + 0.08*(account_age < 30) + 0.04`.
+It puts an *observed model feature* (account age) directly inside the label formula,
+which breaks the rule this module exists to enforce: no feature used to construct the
+label may also be fed to the model. It also plants a sharp discontinuity at exactly 30
+days that a tree ensemble will find and exploit: built that way,
+`customer_account_age_days` takes 27% of total gain importance, over the 25% cap the
+leakage suite enforces.
 
 So the age term is replaced by a second LATENT trait, `is_burner` (a throwaway account
 opened to run an abuse cycle). The burner trait tilts observed account age sharply
 downward, so age stays genuinely predictive -- but only as a noisy proxy for an
 unobserved cause, with no exact threshold to reverse-engineer. Every term in the label
-is now latent. Section 0.1 explicitly permits this: the principle is binding, the
-example code is not.
+is latent.
 
 No feature is touched after `is_fraud` is realised. Every tilt is a shift in a
 distribution with substantial overlap, never a threshold or a deterministic rule, so a
@@ -180,11 +179,17 @@ def generate_dataset(
     n_customers: int = 60_000,
     rng: np.random.Generator | None = None,
     category_share: dict[str, float] | None = None,
+    keep_latent: bool = False,
 ) -> pd.DataFrame:
     """Generate the return-request dataset the model is trained and scored on.
 
     Returns one row per *return request* (the population the API actually sees), with
     `is_fraud` as the label. Latent columns are dropped before returning.
+
+    `keep_latent=True` keeps the underscore-prefixed latent columns for diagnostics only:
+    evaluate/diagnostics.py uses them to compute the oracle ceiling. The random draws are
+    identical either way, so the observable columns do not change, and the model never
+    sees the latent columns because prepare_features() selects FEATURES explicitly.
     """
     rng = rng or np.random.default_rng(RANDOM_SEED)
     share = category_share or CATEGORY_ORDER_SHARE
@@ -254,16 +259,17 @@ def generate_dataset(
 
     # Days to return: abusers sit somewhat closer to the end of the return window (they
     # use the item first), but the distributions overlap heavily -- mean ~8.8d vs ~6.7d.
-    # An earlier draft used gamma(6.0, 2.2) here, a ~2x separation in means. That made a
-    # single order-level timing feature the strongest predictor in the model (19% of gain,
-    # 0.30 correlation with the label), which is not how return timing behaves in
-    # production: it is weak, noisy evidence. The tilt is now sized to match that.
+    # A wider tilt such as gamma(6.0, 2.2) (a ~2x separation in means) makes this single
+    # order-level timing feature the strongest predictor in the model (19% of gain, 0.30
+    # correlation with the label). That is not how return timing behaves in production,
+    # where it is weak, noisy evidence, so the tilt is sized to match.
     days = np.where(fraudster, rng.gamma(4.2, 2.1, n), rng.gamma(3.2, 2.1, n))
     o["days_to_return"] = np.round(np.clip(days, 0, 45), 1)
 
     # --- Label ----------------------------------------------------------------------
     # Derived from the LATENT trait plus mild independent noise. Nothing above is
-    # rewritten after this point -- that rewrite was the original leak.
+    # rewritten after this point: editing features after the label is drawn is exactly
+    # how a synthetic fraud dataset leaks.
     fraud_prob = np.minimum(
         0.55 * fraudster.astype(float) + 0.08 * burner.astype(float) + 0.04,
         0.95,
@@ -272,11 +278,8 @@ def generate_dataset(
 
     # The API scores return *requests*, so the modelling population is returned orders.
     out = o.loc[is_returned].reset_index(drop=True)
-    out = out.drop(
-        columns=[
-            "_is_fraudster", "_is_burner", "_return_propensity", "_in_ring", "pincode",
-        ]
-    )
+    latent = ["_is_fraudster", "_is_burner", "_return_propensity", "_in_ring"]
+    out = out.drop(columns=(["pincode"] if keep_latent else latent + ["pincode"]))
     return out
 
 

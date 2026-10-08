@@ -1,11 +1,11 @@
-"""Pydantic contracts for the scoring API (PROJECT_SPEC.md section 5).
+"""Pydantic contracts for the scoring API.
 
 DELIBERATE DESIGN NOTE: `category` IS A PLAIN STRING, NOT AN ENUM
 ------------------------------------------------------------------
 Typing it as an Enum would make an unknown category a 422 at the schema boundary, which
-would make the section 6.7 fail-closed path unreachable dead code. Section 6.7 requires
-an unrecognised category to be *scored* as `manual_review` with an explaining reason, not
-rejected as malformed -- a merchant adding a new catalogue category should get a safe,
+would make the fail-closed path in api/service.py unreachable dead code. The design
+requires an unrecognised category to be *scored* as `manual_review` with an explaining
+reason, not rejected as malformed -- a merchant adding a new catalogue category should get a safe,
 reviewable answer, not an integration error. So validation of the category value lives in
 the service layer, where the fail-closed behaviour is.
 

@@ -29,7 +29,7 @@
       "status": "not_validated",
       "reason": "ieee_fraud.csv not present (and no creditcard.csv fallback)",
       "how_to_enable": "python scripts/download_ieee.py  -- needs a free Kaggle account, an API token at ~/.kaggle/kaggle.json, and acceptance of the competition rules at kaggle.com/c/ieee-fraud-detection/rules",
-      "note": "This state is reported verbatim in the model card. It is explicitly NOT a success result: the previous version of this function returned an all-True dict here, which made an unrun check look validated."
+      "note": "This state is reported verbatim in the model card. It is explicitly NOT a success result: a check that did not run carries no per-feature results and nothing that reads as a pass."
     }
   },
   "operating_point": {
@@ -201,7 +201,22 @@
       }
     ],
     "plot": "outputs/calibration.png",
-    "note": "Platt calibration is fitted on the validation fold only and is strictly monotone, so PR-AUC, ROC-AUC and all SHAP attributions are identical before and after -- only the probability scale changes. Isotonic was measured first and rejected: its ties cost ~3% of PR-AUC."
+    "note": "Platt calibration is fitted on the validation fold only and is strictly monotone, so PR-AUC, ROC-AUC and all SHAP attributions are identical before and after -- only the probability scale changes. Isotonic is re-measured on every run (see isotonic_comparison) and rejected because its ties cost PR-AUC.",
+    "isotonic_comparison": {
+      "distinct_test_scores_platt": 6684,
+      "distinct_test_scores_isotonic": 50,
+      "rows_in_ties_platt": 4,
+      "rows_in_ties_isotonic": 6663,
+      "rows_at_exactly_1_isotonic": 10,
+      "pr_auc_platt": 0.4369,
+      "pr_auc_isotonic": 0.4205,
+      "pr_auc_change_pct": -3.75,
+      "brier_platt": 0.08805,
+      "brier_isotonic": 0.08881,
+      "ece_platt": 0.01417,
+      "ece_isotonic": 0.01565,
+      "chosen": "platt"
+    }
   },
   "cost_curve": {
     "cost_optimal_threshold": 0.1139,

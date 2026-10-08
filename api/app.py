@@ -1,23 +1,22 @@
 """FastAPI service for the Return Risk Scorer.
 
-FIXES APPLIED HERE
-------------------
-section 6.5 -- `/health` returned HTTP 200 unconditionally, so an orchestrator could
-  never tell a broken instance from a working one and would happily route traffic to a
-  service that fails every request closed. It now returns 503 when the model is not
-  loaded.
+OPERATIONAL CONTRACT
+--------------------
+`/health` returns 503 when the model is not loaded. A health check that always answers
+200 lets an orchestrator route traffic to an instance that fails every request closed;
+this one makes a broken instance visible.
 
-section 6.6 -- `allow_origins=["*"]` was combined with `allow_credentials=True`. Browsers
-  reject that pairing outright, and some server configurations "fix" it by reflecting the
-  caller's origin, which is strictly worse. This API has no cookie or session auth, so
-  credentials are simply turned off and the wildcard becomes safe.
+CORS uses wildcard origins WITHOUT credentials. `allow_origins=["*"]` together with
+`allow_credentials=True` is rejected by browsers, and the usual workaround -- reflecting
+the caller's origin -- is strictly worse. This API has no cookie or session auth, so
+credentials stay off and the wildcard is safe.
 
-DEFENSE-ONLY DEVIATION FROM THE section 6.5 SNIPPET
----------------------------------------------------
-The snippet in section 6.5 puts `threshold` in the `/health` body. We deliberately do not.
-Constraint 1.1 forbids exposing exact decision thresholds "beyond what's needed to act on
-a single legitimate order" -- `/health` is an unauthenticated liveness probe, not an act
-on an order, so a global threshold there is disclosure with no operational justification.
+DEFENSE-ONLY: NO GLOBAL THRESHOLD ON /health
+--------------------------------------------
+Track 02 disqualifies anything offense-capable, and this service reads that strictly: no
+endpoint reveals an exact decision threshold beyond what is needed to act on a single
+order. `/health` is an unauthenticated liveness probe, not an act on an order, so a global
+threshold there would be disclosure with no operational justification.
 `/score` does return `threshold_used`, which sits squarely inside that carve-out: the
 merchant needs it to interpret the one order they asked about, and it reveals nothing an
 attacker could not already infer from the `risk_score` + `action` pair in the same
@@ -50,7 +49,7 @@ logger = logging.getLogger(__name__)
 service: RiskScoringService | None = None
 
 # --- Anti-probing rate limit --------------------------------------------------------
-# Constraint 1.1 bars any capability that helps an attacker map the decision boundary.
+# Defense-only: no capability may help an attacker map the decision boundary.
 # The cheapest such attack is high-volume probing: vary one field, watch the score move,
 # reconstruct the surface. A batch cap (api/schemas.py) plus this limiter make that slow
 # and visible. Deliberately simple and in-process: this is a demo-grade control, and a
@@ -83,7 +82,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# section 6.6 fix: wildcard origins WITHOUT credentials.
+# Wildcard origins WITHOUT credentials (see the module docstring).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -131,7 +130,7 @@ async def root():
 
 @app.get("/health")
 async def health():
-    """Liveness + readiness. 503 when the model is not loaded (section 6.5 fix)."""
+    """Liveness + readiness. 503 when the model is not loaded."""
     if service is None or not service.is_ready():
         return JSONResponse(
             status_code=503,
@@ -172,5 +171,5 @@ async def score_batch(batch: BatchRequest):
 if __name__ == "__main__":
     import uvicorn
 
-    # Port 7860 is Hugging Face Spaces' default (PROJECT_SPEC.md section 8).
+    # Port 7860 locally (Hugging Face Spaces' default); hosts such as Render set $PORT.
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "7860")))

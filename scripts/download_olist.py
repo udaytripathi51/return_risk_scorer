@@ -1,4 +1,4 @@
-"""Download the Olist Brazilian E-Commerce dataset (PROJECT_SPEC.md section 6.1).
+"""Download the Olist Brazilian E-Commerce dataset.
 
     python scripts/download_olist.py
 
@@ -6,8 +6,7 @@ Used ONLY to calibrate order/category distribution *shape*. Olist is Brazilian, 
 tells us nothing about Indian COD/RTO behaviour or about fraud — see
 data/real_calibration.py for how narrowly it is used.
 
-SETUP (required — this is the step section 6.3 says must be documented, not silently
-skipped):
+SETUP (documented rather than silently skipped):
   1. Create a free Kaggle account at https://www.kaggle.com
   2. Account -> Settings -> API -> "Create New Token". This downloads kaggle.json.
   3. Place it at ~/.kaggle/kaggle.json  (Windows: %USERPROFILE%\\.kaggle\\kaggle.json)

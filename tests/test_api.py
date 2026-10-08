@@ -58,7 +58,7 @@ def test_docs_served(client):
     assert client.get("/openapi.json").status_code == 200
 
 
-# --- section 6.5: health check must report unhealthy honestly ------------------------
+# --- health check must report an unhealthy instance -------------------------------
 
 
 def test_health_returns_200_when_model_loaded(client):
@@ -71,8 +71,8 @@ def test_health_returns_200_when_model_loaded(client):
 
 
 def test_health_returns_503_when_model_missing(monkeypatch):
-    """Section 6.5 fix: the old handler returned 200 unconditionally, so a broken
-    instance looked healthy to any orchestrator."""
+    """A health check that always answers 200 makes a broken instance look healthy to
+    any orchestrator. This one must answer 503 when the model is not loaded."""
     import api.app as app_module
 
     broken = RiskScoringService(model_dir="does/not/exist")
@@ -89,8 +89,8 @@ def test_health_returns_503_when_model_missing(monkeypatch):
 
 
 def test_health_does_not_leak_the_decision_threshold(client):
-    """Constraint 1.1: no endpoint may reveal exact thresholds beyond what is needed to
-    act on a single order. /health is a liveness probe, not an act on an order."""
+    """Defense-only: no endpoint may reveal exact thresholds beyond what is needed to act
+    on a single order. /health is a liveness probe, not an act on an order."""
     body = client.get("/health").json()
     assert "threshold" not in body
     assert body["threshold_configured"] is True
@@ -137,12 +137,13 @@ def test_clean_order_scores_lower_than_a_risky_one(client):
     assert low["risk_score"] < high["risk_score"]
 
 
-# --- section 6.7: unknown category must fail closed ----------------------------------
+# --- unknown category must fail closed ---------------------------------------------
 
 
 def test_unknown_category_fails_closed(client):
-    """Section 6.7 fix: an unknown category used to be mapped to encoded index 0, so it
-    silently impersonated whichever category sorted first and could be auto-approved."""
+    """A naive encoder maps an unknown category to index 0, where it silently
+    impersonates whichever category sorts first and can be auto-approved. Here it must
+    fail closed with an explaining reason."""
     r = client.post("/score", json=_order(category="Groceries"))
     assert r.status_code == 200
     b = r.json()
@@ -154,7 +155,8 @@ def test_unknown_category_fails_closed(client):
 
 
 def test_unknown_category_never_impersonates_a_known_one(client):
-    """The specific old failure mode: 'Groceries' must not score like 'Apparel'."""
+    """The index-0 failure mode, tested directly: 'Groceries' must not score like
+    'Apparel'."""
     unknown = client.post("/score", json=_order(category="Groceries")).json()
     apparel = client.post("/score", json=_order(category="Apparel")).json()
     assert unknown["risk_score"] != apparel["risk_score"]
@@ -221,6 +223,28 @@ def test_unknown_days_to_return_sentinel_is_handled(client):
     assert any("days_to_return" in n for n in b["data_quality_notes"])
 
 
+def test_missing_days_to_return_never_renders_nan_in_reasons(client):
+    """-1 is mapped to NaN before scoring, and every comparison with NaN is False, so a
+    reason template must handle a missing value explicitly rather than print "nan" into
+    a sentence. This profile makes the missing timing one of the top-3 drivers under
+    the committed model."""
+    payload = _order(
+        customer_return_rate_lt=0.10, customer_return_rate_90d=0.10,
+        customer_account_age_days=200, customer_order_velocity_7d=1, order_value=1500.0,
+        discount_percentage=0.0, category="Home", category_return_base_rate=0.11,
+        is_prepaid=1, is_cod=0, days_to_return=-1, same_address_returns_7d=0,
+        same_email_returns_7d=0, payment_hash_collision=0, ip_phone_collision=0,
+        rto_risk_score=0.10,
+    )
+    b = client.post("/score", json=payload).json()
+    for reason in b["reasons"]:
+        assert "nan" not in reason["reason"].lower(), reason
+    timing = [r for r in b["reasons"] if r["feature"] == "days_to_return"]
+    for r in timing:
+        assert r["value"] is None
+        assert "not supplied" in r["reason"]
+
+
 # --- batch ---------------------------------------------------------------------------
 
 
@@ -244,7 +268,7 @@ def test_batch_isolates_a_bad_order(client):
 
 
 def test_batch_size_is_capped(client):
-    """Constraint 1.1: unbounded batch scoring is the cheapest way to map a decision
+    """Defense-only: unbounded batch scoring is the cheapest way to map a decision
     boundary."""
     over = {"orders": [VALID_ORDER] * (MAX_BATCH_SIZE + 1)}
     assert client.post("/score/batch", json=over).status_code == 422
@@ -254,12 +278,12 @@ def test_empty_batch_is_rejected(client):
     assert client.post("/score/batch", json={"orders": []}).status_code == 422
 
 
-# --- section 6.6: CORS ---------------------------------------------------------------
+# --- CORS ----------------------------------------------------------------------------
 
 
 def test_cors_does_not_combine_wildcard_with_credentials(client):
-    """Section 6.6 fix: allow_origins=['*'] with allow_credentials=True is rejected by
-    browsers and, in some setups, reflects any origin."""
+    """allow_origins=['*'] with allow_credentials=True is rejected by browsers and, in
+    some setups, ends up reflecting any origin. Credentials must stay off."""
     r = client.get("/health", headers={"Origin": "https://example.com"})
     assert r.headers.get("access-control-allow-origin") == "*"
     assert "access-control-allow-credentials" not in r.headers
@@ -285,12 +309,12 @@ def test_reasons_never_state_how_to_evade(client):
         assert leak not in blob
 
 
-# --- packaging (section 6.9) ---------------------------------------------------------
+# --- packaging -----------------------------------------------------------------------
 
 
 def test_sample_order_json_exists_and_scores(client):
-    """Section 6.9: sample_order.json was referenced in the documented curl command but
-    nothing ever created it."""
+    """The README's curl example posts sample_order.json, so the file must exist and
+    score."""
     assert os.path.exists("sample_order.json")
     with open("sample_order.json", encoding="utf-8") as f:
         payload = json.load(f)

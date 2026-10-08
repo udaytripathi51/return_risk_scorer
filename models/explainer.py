@@ -45,6 +45,14 @@ def _fmt_inr(v: float) -> str:
 def _reason_text(feature: str, value: float, increases_risk: bool) -> str:
     """Map (feature, value, direction) to a sentence a merchant ops reviewer can act on."""
     up = increases_risk
+    # A missing value arrives as NaN: the service maps the contract's `days_to_return = -1`
+    # sentinel to NaN before scoring, and a CSV batch can carry empty cells. Every
+    # comparison with NaN is False, so this guard runs before the templates below, which
+    # would otherwise print "nan" into a sentence.
+    if value is None or np.isnan(value):
+        if feature == "days_to_return":
+            return "Return timing was not supplied for this request"
+        return f"No value was supplied for {feature}"
     if feature == "customer_return_rate_lt":
         pct = value * 100
         return (
@@ -98,7 +106,7 @@ def _reason_text(feature: str, value: float, increases_risk: bool) -> str:
                "Prepaid order, but other signals are elevated"
     if feature == "days_to_return":
         if value < 0:
-            return "Return window timing not available for this request"
+            return "Return timing was not supplied for this request"
         return (
             f"Return raised {value:.0f} days after delivery, late in the window"
             if up
@@ -117,7 +125,7 @@ def _reason_text(feature: str, value: float, increases_risk: bool) -> str:
             else "No unusual return clustering on this email"
         )
     if feature == "payment_hash_collision":
-        return "Payment instrument shared with other flagged accounts" if value >= 0.5 \
+        return "Payment instrument shared with other accounts" if value >= 0.5 \
             else "Payment instrument not shared with other accounts"
     if feature == "ip_phone_collision":
         return "Device/phone fingerprint shared with other accounts" if value >= 0.5 \

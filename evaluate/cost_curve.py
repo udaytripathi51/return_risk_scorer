@@ -1,4 +1,4 @@
-"""Cost-vs-threshold curve (PROJECT_SPEC.md sections 7.4 and 2).
+"""Cost-vs-threshold curve.
 
 A single threshold is a claim without evidence behind it. This module sweeps the whole
 operating range and plots expected cost per return request, so a reviewer can see where

@@ -1,13 +1,13 @@
 # requirements-lock.txt — EXACT versions this project was built and tested against.
 #
 # Generated from the transitive dependency closure of requirements.txt, pinned to the
-# interpreter and packages the pipeline actually ran on (see PROJECT_SPEC.md section 6.8:
-# no guessed upper bounds — pin what was verified).
+# interpreter and packages the pipeline actually ran on: no guessed upper bounds, pin
+# what was verified.
 #
-# Docker builds from THIS file, not requirements.txt, so a reviewer's build resolves to
-# what was verified rather than whatever is newest on the day they build.
+# Docker, Render and CI build from THIS file, not requirements.txt, so every build
+# resolves to what was verified rather than whatever is newest on the day it runs.
 #
-# Verified on: Python 3.13.5 / Windows 11
+# Verified on: Python 3.13.5 / Windows 11, and Python 3.13 / Ubuntu in CI
 # Key versions: xgboost 3.4.1 · shap 0.52.0 · scikit-learn 1.6.1 · pandas 2.2.3 · numpy 2.1.3
 #
 # Regenerate with:  pip install -r requirements.txt && pip freeze
@@ -64,7 +64,6 @@ requests==2.32.3
 rpds-py==0.22.3
 scikit-learn==1.6.1
 scipy==1.15.3
-seaborn==0.13.2
 shap==0.52.0
 six==1.17.0
 slicer==0.0.8

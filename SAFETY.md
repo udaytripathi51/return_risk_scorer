@@ -14,7 +14,7 @@ attacker locate its decision boundary.**
 
 | Exposed | Where | Why it is necessary |
 |---|---|---|
-| `risk_score` (0–1) for one submitted order | `POST /score` | The merchant must triage this order. §2 requires a score, not just a binary. |
+| `risk_score` (0–1) for one submitted order | `POST /score` | The merchant must triage this order; a graded score supports queues and review capacity, a bare yes/no does not. |
 | `action` (`auto_approve` / `manual_review`) | `POST /score` | The bounded decision the system exists to produce. |
 | Top-3 reasons for **this** order | `POST /score` | A merchant ops team cannot act on a score it cannot explain. |
 | `threshold_used` for **this** order | `POST /score` | Needed to interpret this one decision — see the carve-out below. |
@@ -34,9 +34,9 @@ attacker locate its decision boundary.**
 
 ## The threshold carve-out, stated explicitly
 
-Constraint §1.1 forbids revealing exact decision thresholds *"beyond what's needed to act
-on a single legitimate order."* That phrasing contains a deliberate carve-out, and this
-system sits on both sides of it consciously:
+The rule this system holds itself to: no exact decision threshold is revealed *beyond
+what's needed to act on a single legitimate order.* That rule contains a deliberate
+carve-out, and the system sits on both sides of it consciously:
 
 - **`/score` returns `threshold_used`.** This is inside the carve-out. The merchant needs
   it to interpret the one order they asked about. Critically, it leaks **nothing**: the
@@ -48,9 +48,19 @@ system sits on both sides of it consciously:
   probe is not an act on an order, so publishing a global decision constant there is
   disclosure with no operational justification.
 
-This is a **deliberate deviation from the example snippet in `PROJECT_SPEC.md` §6.5**,
-which places `threshold` in the health body. §0.1 makes the constraint binding and the
-example code advisory; the constraint wins. See `ARCHITECTURE.md` decision 11.
+Many service templates put the threshold in the health body. This one deliberately does
+not; see `ARCHITECTURE.md` decision 11.
+
+## Demo surfaces, stated plainly
+
+The public Streamlit dashboard is a demonstration on synthetic data. Its manual-entry form
+lets a visitor vary inputs and watch the decision change, and its sidebar shows the
+operating threshold. That is acceptable for a synthetic demo and would not be acceptable
+in production, where the reviewer UI should show real orders read-only, behind
+authentication, through the rate-limited API. Its CSV upload is capped at the same
+100-row limit as `POST /score/batch`. The README and `outputs/metrics.json` also publish
+global feature importances for this synthetic model; a production model's importances
+would stay internal.
 
 ## Explanations are descriptive, never prescriptive
 
@@ -91,8 +101,8 @@ always distinguish "certainly fraud" from "could not be assessed".
   (`payment_hash_collision`, `ip_phone_collision`) — never raw emails, phone numbers,
   payment instruments or IP addresses. The service could not re-identify a person from its
   inputs even if asked to.
-- No secrets are required by this project, which matters because Hugging Face Spaces are
-  public: code, logs and all.
+- No secrets are required by this project, which matters because the repository and the
+  live Render deployment are public.
 
 ## What this system cannot do, and does not claim to
 
