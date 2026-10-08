@@ -1,0 +1,45 @@
+# Runs on every push to main and on every pull request: the full test suite (API
+# contract and fail-closed paths, model and data properties, the leakage suite), then the
+# full-size leakage run, which must pass on the project data AND flag a deliberately
+# leaky positive control. The README's CI badge shows the latest result on main.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests and leakage suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python (version from .python-version)
+        uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements-lock.txt
+
+      - name: Install the locked dependencies
+        run: python -m pip install -r requirements-lock.txt
+
+      - name: Run the test suite
+        run: python -m pytest tests/ -v
+
+      - name: Leakage suite at full size, plus the leaky positive control
+        run: python -m evaluate.leakage_test
